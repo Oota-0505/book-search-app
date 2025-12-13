@@ -16,112 +16,189 @@ TSUTAYA_STORE_KEYWORD = "各務原"
 # --- Custom CSS for Modern UI ---
 st.markdown("""
 <style>
-    .main {
-        background-color: #ffffff;
+    :root {
+        --bg0: #F7FAFF;
+        --bg1: #FFFFFF;
+        --text: #0F172A;
+        --muted: #64748B;
+        --border: rgba(15, 23, 42, 0.10);
+        --shadow: 0 10px 25px rgba(2, 6, 23, 0.06);
+        --shadow-hover: 0 14px 32px rgba(2, 6, 23, 0.10);
+        --blue0: #3B82F6;
+        --blue1: #2563EB;
+        --ok: #10B981;
+        --ng: #EF4444;
+        --warn: #F59E0B;
+        --amber0: #FF9900;
+        --amber1: #FF6A00;
+    }
+
+    /* App background & typography */
+    .stApp {
+        background: radial-gradient(1200px 600px at 10% 0%, rgba(59,130,246,0.10), transparent 55%),
+                    radial-gradient(900px 450px at 90% 0%, rgba(255,153,0,0.10), transparent 55%),
+                    linear-gradient(180deg, var(--bg0), var(--bg1));
+        color: var(--text);
+    }
+    .block-container {
+        max-width: 1120px;
+        padding-top: 2.25rem;
+        padding-bottom: 2.5rem;
     }
     h1 {
         color: #1E3A8A;
-        font-family: 'Helvetica Neue', sans-serif;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        letter-spacing: -0.02em;
     }
+
+    /* Text input */
+    div[data-testid="stTextInput"] input {
+        border-radius: 12px !important;
+        border: 1px solid var(--border) !important;
+        padding: 0.85rem 0.95rem !important;
+        box-shadow: 0 1px 0 rgba(2,6,23,0.02) !important;
+    }
+    div[data-testid="stTextInput"] input:focus {
+        border-color: rgba(37,99,235,0.55) !important;
+        box-shadow: 0 0 0 4px rgba(37,99,235,0.18) !important;
+    }
+
+    /* Buttons: primary vs secondary */
+    button[data-testid="stBaseButton-primary"] {
+        width: 100%;
+        background: linear-gradient(90deg, #4F46E5 0%, #3B82F6 100%) !important;
+        color: white !important;
+        font-weight: 800 !important;
+        border: none !important;
+        padding: 0.70rem 1rem !important;
+        border-radius: 12px !important;
+        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+        box-shadow: 0 10px 18px rgba(59, 130, 246, 0.22) !important;
+    }
+    button[data-testid="stBaseButton-primary"]:hover {
+        background: linear-gradient(90deg, #4338CA 0%, #2563EB 100%) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 14px 24px rgba(59, 130, 246, 0.28) !important;
+    }
+
+    /* History buttons (secondary) */
+    button[data-testid="stBaseButton-secondary"] {
+        width: 100%;
+        border-radius: 999px !important;
+        border: 1px solid var(--border) !important;
+        background: rgba(255,255,255,0.85) !important;
+        color: var(--text) !important;
+        font-weight: 700 !important;
+        padding: 0.45rem 0.65rem !important;
+        box-shadow: 0 4px 10px rgba(2,6,23,0.04) !important;
+    }
+    button[data-testid="stBaseButton-secondary"]:hover {
+        border-color: rgba(37,99,235,0.35) !important;
+        box-shadow: 0 10px 18px rgba(2,6,23,0.06) !important;
+        transform: translateY(-1px);
+    }
+
+    /* Result card */
     .result-card {
-        background-color: #f8f9fa;
-        border-radius: 12px;
-        padding: 20px;
+        background: rgba(255,255,255,0.92);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 16px 16px 14px 16px;
         margin: 10px 0;
-        border-left: 5px solid #ddd;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        transition: transform 0.2s;
+        box-shadow: var(--shadow);
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+        position: relative;
+        overflow: hidden;
     }
     .result-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        box-shadow: var(--shadow-hover);
     }
-    .border-ok { border-left-color: #10B981 !important; }
-    .border-ng { border-left-color: #EF4444 !important; }
-    .border-warn { border-left-color: #F59E0B !important; }
-    .site-name {
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: #4B5563;
-        margin-bottom: 0.5rem;
+    .border-ok { border-left: 5px solid var(--ok) !important; }
+    .border-ng { border-left: 5px solid var(--ng) !important; }
+    .border-warn { border-left: 5px solid var(--warn) !important; }
+
+    .card-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    .site {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
+        min-width: 0;
     }
-    .status-text {
-        font-size: 1.5rem;
+    .site-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(37,99,235,0.10);
+        border: 1px solid rgba(37,99,235,0.16);
+        flex: 0 0 auto;
+        font-size: 18px;
+    }
+    .site-title {
+        font-size: 1.02rem;
         font-weight: 800;
-        margin: 10px 0;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        letter-spacing: -0.01em;
     }
-            .btn-amazon {
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 0.95rem;
+        font-weight: 800;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.75);
+        flex: 0 0 auto;
+    }
+    .pill-ok { border-color: rgba(16,185,129,0.35); background: rgba(16,185,129,0.10); }
+    .pill-ng { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.08); }
+    .pill-warn { border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.12); }
+
+    /* Link buttons */
+    .btn-link, .btn-amazon {
         display: block;
         width: 100%;
         text-align: center;
-        background: linear-gradient(135deg, #FF9900 0%, #FF6600 100%);
         color: white !important;
         text-decoration: none;
-        padding: 12px 0;
-        border-radius: 8px;
-        font-weight: 700;
-        margin: 10px 0;
-        box-shadow: 0 2px 4px rgba(255, 153, 0, 0.2);
-        border: none;
-        cursor: pointer;
-        font-size: 1.1rem;
-        line-height: 1.5;
-        transition: all 0.2s ease;
-    }
-    .btn-amazon:hover {
-        background: linear-gradient(135deg, #FFAD33 0%, #FF8533 100%);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(255, 153, 0, 0.3);
+        border-radius: 12px;
+        font-weight: 800;
+        padding: 11px 0;
+        box-shadow: 0 10px 18px rgba(2,6,23,0.10);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        line-height: 1.4;
     }
     .btn-link {
-        display: block;
-        width: 100%;
-        text-align: center;
-        background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
-        color: white !important;
-        text-decoration: none;
-        padding: 10px 0;
-        border-radius: 8px;
-        font-weight: 600;
-        margin-top: 15px;
-        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
-        border: none;
-        cursor: pointer;
-        font-size: 1rem;
-        line-height: 1.5;
+        background: linear-gradient(135deg, var(--blue0) 0%, var(--blue1) 100%);
     }
-    .btn-link:hover {
-        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
-        box-shadow: 0 4px 6px rgba(37, 99, 235, 0.3);
+    .btn-amazon {
+        background: linear-gradient(135deg, var(--amber0) 0%, var(--amber1) 100%);
     }
-    div.stButton > button {
-        width: 100%;
-        background: linear-gradient(90deg, #4F46E5 0%, #3B82F6 100%);
-        color: white !important;
-        font-weight: bold;
-        border: none;
-        padding: 0.6rem 1rem;
-        border-radius: 8px;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
-    }
-    div.stButton > button:hover {
-        background: linear-gradient(90deg, #4338CA 0%, #2563EB 100%);
-        box-shadow: 0 6px 8px rgba(59, 130, 246, 0.4);
+    .btn-link:hover, .btn-amazon:hover {
         transform: translateY(-1px);
-        color: white !important;
-        border-color: transparent !important;
+        box-shadow: 0 14px 24px rgba(2,6,23,0.14);
+        filter: brightness(1.02);
     }
-    div.stButton > button:active {
-        transform: translateY(1px);
-        box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
-    }
-    div.stButton > button:focus {
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
-        color: white !important;
+
+    /* Small screens tweaks */
+    @media (max-width: 640px) {
+        .block-container { padding-top: 1.4rem; }
+        .site-title { font-size: 0.98rem; }
+        .status-pill { font-size: 0.92rem; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -315,10 +392,21 @@ def check_status(keyword):
 
 def create_result_card(site_name, icon, status, url):
     """検索結果カードのHTMLを生成"""
+    pill_class_map = {
+        "border-ok": "pill-ok",
+        "border-ng": "pill-ng",
+        "border-warn": "pill-warn",
+    }
+    pill_class = pill_class_map.get(status.get("class", ""), "pill-warn")
     return f"""
     <div class="result-card {status['class']}">
-        <div class="site-name">{icon} {site_name}</div>
-        <div class="status-text">{status['icon']} {status['text']}</div>
+        <div class="card-top">
+            <div class="site">
+                <span class="site-icon">{icon}</span>
+                <span class="site-title">{site_name}</span>
+            </div>
+            <div class="status-pill {pill_class}">{status['icon']} {status['text']}</div>
+        </div>
         <a href="{url}" target="_blank" rel="noopener noreferrer" class="btn-link">結果を開く ↗</a>
     </div>
     """
