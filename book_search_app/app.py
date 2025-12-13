@@ -51,6 +51,29 @@ st.markdown("""
         font-weight: 800;
         margin: 10px 0;
     }
+            .btn-amazon {
+        display: block;
+        width: 100%;
+        text-align: center;
+        background: linear-gradient(135deg, #FF9900 0%, #FF6600 100%);
+        color: white !important;
+        text-decoration: none;
+        padding: 12px 0;
+        border-radius: 8px;
+        font-weight: 700;
+        margin: 10px 0;
+        box-shadow: 0 2px 4px rgba(255, 153, 0, 0.2);
+        border: none;
+        cursor: pointer;
+        font-size: 1.1rem;
+        line-height: 1.5;
+        transition: all 0.2s ease;
+    }
+    .btn-amazon:hover {
+        background: linear-gradient(135deg, #FFAD33 0%, #FF8533 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(255, 153, 0, 0.3);
+    }
     .btn-link {
         display: block;
         width: 100%;
@@ -214,24 +237,46 @@ def create_result_card(site_name, icon, status, url):
     """
 
 # --- Main UI ---
+st.markdown("### 🔍 キーワード入力")
 keyword_input = st.text_input("", placeholder="キーワードを入力 (例: 吾輩は猫である)", label_visibility="collapsed")
 
 # 検索履歴表示
 if st.session_state.search_history:
-    st.write("🕒 検索履歴:")
-    cols = st.columns(6)
+    st.caption("🕒 検索履歴:")
+    cols = st.columns(HISTORY_LIMIT)
     for i, hist_kw in enumerate(st.session_state.search_history[:HISTORY_LIMIT]):
-        if cols[i].button(hist_kw, key=f"h_{i}"):
+        if cols[i].button(hist_kw, key=f"h_{i}", use_container_width=True):
             keyword_input = hist_kw
 
-# 検索実行
-should_search = st.button("🔍 検索", type="primary", use_container_width=True)
-if should_search or (keyword_input and keyword_input not in st.session_state.search_history and len(keyword_input) > 1):
+# アクションエリア
+col_search, col_amazon = st.columns([1, 1])
+
+with col_amazon:
+    if keyword_input:
+        amazon_url = f"https://www.amazon.co.jp/s?k={urllib.parse.quote(keyword_input)}"
+        st.markdown(f"""
+        <a href="{amazon_url}" target="_blank" rel="noopener noreferrer" class="btn-amazon">
+            📦 Amazonでレビュー・人気本を探す ↗
+        </a>
+        """, unsafe_allow_html=True)
+    else:
+        st.info("👆 キーワードを入力するとAmazon検索ボタンが表示されます")
+
+with col_search:
+    should_search = st.button("📚 図書館・書店を検索", type="primary", use_container_width=True)
+
+st.markdown("---")
+
+# 検索実行ロジック
+if should_search or (keyword_input and keyword_input not in st.session_state.search_history and len(keyword_input) > 1 and should_search): # ボタン押下または履歴以外の入力でエンター（Streamlitの仕様上ボタン推奨）
     if not keyword_input:
-        st.warning("キーワードを入力してください")
+        st.warning("⚠️ キーワードを入力してください")
     else:
         add_to_history(keyword_input)
-        with st.spinner("検索中..."):
+        
+        st.subheader(f"「{keyword_input}」の検索結果")
+        
+        with st.spinner("各サイトを検索中..."):
             status = check_status(keyword_input)
             
             col1, col2, col3 = st.columns(3)
@@ -240,13 +285,12 @@ if should_search or (keyword_input and keyword_input not in st.session_state.sea
             with col1:
                 # lang=jaパラメータを追加してPC版として認識させる
                 gifu_url = f"https://www1.gifu-lib.jp/winj/opac/search-standard.do?lang=ja&txt_word={urllib.parse.quote(keyword_input)}&hid_word_column=fulltext&submit_btn_searchEasy=search"
-                st.markdown(create_result_card("🏢 岐阜市立図書館", "", status['gifu'], gifu_url), unsafe_allow_html=True)
-                # st.caption("※ スマホでトップページに飛ばされた場合は、一度トップページを開いてから再度お試しください。")
+                st.markdown(create_result_card("岐阜市立図書館", "🏢", status['gifu'], gifu_url), unsafe_allow_html=True)
             
             # 可児市立図書館
             with col2:
                 kani_url = f"https://www.kani-lib.jp/csp/opw/OPW/OPWSRCHLIST.CSP?opr(1)=OR&DB=LIB&PID=OPWSRCH1&FLG=SEARCH&MODE=1&SORT=-3&qual(1)=MZALL&text(1)={urllib.parse.quote(keyword_input)}"
-                st.markdown(create_result_card("🌲 可児市立図書館", "", status['kani'], kani_url), unsafe_allow_html=True)
+                st.markdown(create_result_card("可児市立図書館", "🌲", status['kani'], kani_url), unsafe_allow_html=True)
             
             # 三省堂書店
             with col3:
@@ -255,6 +299,6 @@ if should_search or (keyword_input and keyword_input not in st.session_state.sea
                     "title": "", "author": "", "isbn": "", "genreCode": "", "search": "検索"
                 }
                 sanseido_url = f"https://www.books-sanseido.jp/booksearch/BookSearchExec.action?{urllib.parse.urlencode(sanseido_params)}"
-                st.markdown(create_result_card("📖 三省堂書店", "", status['sanseido'], sanseido_url), unsafe_allow_html=True)
+                st.markdown(create_result_card("三省堂書店", "📖", status['sanseido'], sanseido_url), unsafe_allow_html=True)
 
-st.markdown("---")
+st.markdown("<br><br>", unsafe_allow_html=True)
