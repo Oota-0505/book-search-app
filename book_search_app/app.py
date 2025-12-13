@@ -414,7 +414,7 @@ def create_result_card(site_name, icon, status, url):
 # --- Main UI ---
 st.markdown("### 🔍 キーワード入力")
 keyword_input = st.text_input(
-    "",
+    "キーワード",
     placeholder="キーワードを入力 (例: 吾輩は猫である)",
     label_visibility="collapsed",
     key="keyword_input",
