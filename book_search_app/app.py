@@ -238,9 +238,10 @@ if should_search or (keyword_input and keyword_input not in st.session_state.sea
             
             # 岐阜市立図書館
             with col1:
-                gifu_url = f"https://www1.gifu-lib.jp/winj/opac/search-standard.do?txt_word={urllib.parse.quote(keyword_input)}&hid_word_column=fulltext&submit_btn_searchEasy=search"
+                # lang=jaパラメータを追加してPC版として認識させる
+                gifu_url = f"https://www1.gifu-lib.jp/winj/opac/search-standard.do?lang=ja&txt_word={urllib.parse.quote(keyword_input)}&hid_word_column=fulltext&submit_btn_searchEasy=search"
                 st.markdown(create_result_card("🏢 岐阜市立図書館", "", status['gifu'], gifu_url), unsafe_allow_html=True)
-                st.caption("※ トップページに飛ばされた場合は、一度トップページを開いてから再度お試しください。")
+                st.caption("※ スマホでトップページに飛ばされた場合は、一度トップページを開いてから再度お試しください。")
             
             # 可児市立図書館
             with col2:
