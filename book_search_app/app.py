@@ -214,7 +214,7 @@ def create_result_card(site_name, icon, status, url):
     """
 
 # --- Main UI ---
-# keyword_input = st.text_input("", placeholder="キーワードを入力 (例: 吾輩は猫である)", label_visibility="collapsed")
+keyword_input = st.text_input("", placeholder="キーワードを入力 (例: 吾輩は猫である)", label_visibility="collapsed")
 
 # 検索履歴表示
 if st.session_state.search_history:
