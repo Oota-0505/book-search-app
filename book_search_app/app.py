@@ -214,7 +214,7 @@ def create_result_card(site_name, icon, status, url):
     """
 
 # --- Main UI ---
-keyword_input = st.text_input("", placeholder="キーワードを入力 (例: 吾輩は猫である)", label_visibility="collapsed")
+# keyword_input = st.text_input("", placeholder="キーワードを入力 (例: 吾輩は猫である)", label_visibility="collapsed")
 
 # 検索履歴表示
 if st.session_state.search_history:
@@ -241,7 +241,7 @@ if should_search or (keyword_input and keyword_input not in st.session_state.sea
                 # lang=jaパラメータを追加してPC版として認識させる
                 gifu_url = f"https://www1.gifu-lib.jp/winj/opac/search-standard.do?lang=ja&txt_word={urllib.parse.quote(keyword_input)}&hid_word_column=fulltext&submit_btn_searchEasy=search"
                 st.markdown(create_result_card("🏢 岐阜市立図書館", "", status['gifu'], gifu_url), unsafe_allow_html=True)
-                st.caption("※ スマホでトップページに飛ばされた場合は、一度トップページを開いてから再度お試しください。")
+                # st.caption("※ スマホでトップページに飛ばされた場合は、一度トップページを開いてから再度お試しください。")
             
             # 可児市立図書館
             with col2:
