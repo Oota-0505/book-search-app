@@ -125,7 +125,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("📚 Book Finder")
-st.caption("岐阜市図書館・可児市図書館・三省堂書店を一括検索")
+st.caption("岐阜市図書館・可児市図書館・岐阜駅本屋を一括検索")
 
 # Initialize History
 if 'search_history' not in st.session_state:
@@ -156,8 +156,12 @@ def check_gifu_lib(keyword):
         res = session.get(search_url, params=params, headers=headers, timeout=10, allow_redirects=True)
         res.encoding = res.apparent_encoding
         
-        # 判定
-        if "g-mediacosmos.jp" in res.url or "該当する資料はありません" in res.text:
+        # 判定（0件表現が複数あるため両方見る）
+        nohit_phrases = (
+            "該当する資料はありません",
+            "該当するリストが存在しません",
+        )
+        if "g-mediacosmos.jp" in res.url or any(p in res.text for p in nohit_phrases):
             return {"text": "なし", "class": "border-ng", "icon": "❌"}
         else:
             soup = BeautifulSoup(res.text, 'html.parser')
@@ -198,23 +202,38 @@ def check_kani_lib(keyword):
         return {"text": "エラー", "class": "border-warn", "icon": "⚠️"}
 
 def check_sanseido(keyword):
-    """三省堂書店の在庫チェック"""
+    """三省堂岐阜の在庫チェック"""
     try:
         url = "https://www.books-sanseido.jp/booksearch/BookSearchExec.action"
         params = {
             "shopCode": "0458", "keyword": keyword, "defaultShopCode": "",
             "title": "", "author": "", "isbn": "", "genreCode": "", "search": "検索"
         }
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {"User-Agent": USER_AGENT}
         res = requests.get(url, params=params, headers=headers, timeout=10)
         res.encoding = res.apparent_encoding
-        
-        match = re.search(r'(\d+)件中', res.text)
-        if match and match.group(1) != "0":
-            return {"text": f"{match.group(1)}件", "class": "border-ok", "icon": "⭕️"}
-        elif "検索結果：0件" in res.text:
+
+        # 0件判定（表記ゆれ）
+        if "検索結果：0件" in res.text or "検索結果:0件" in res.text:
             return {"text": "なし", "class": "border-ng", "icon": "❌"}
-        return {"text": "あり", "class": "border-ok", "icon": "⭕️"}
+
+        # 件数（例: "<strong>1</strong>件中"）
+        m = re.search(r'<strong>\s*(\d+)\s*</strong>\s*件中', res.text)
+        total = int(m.group(1)) if m else None
+        if total == 0:
+            return {"text": "なし", "class": "border-ng", "icon": "❌"}
+
+        # 在庫（例: "在庫： ×" / "在庫： ○"）
+        stock_marks = re.findall(r'在庫：\s*([○×△▲])', res.text)
+        if stock_marks:
+            if any(mark != "×" for mark in stock_marks):
+                return {"text": "在庫あり", "class": "border-ok", "icon": "⭕️"}
+            return {"text": "なし", "class": "border-ng", "icon": "❌"}
+
+        # フォールバック：ヒットはあるが在庫表現が取れない（要確認）
+        if total is not None and total > 0:
+            return {"text": f"{total}件", "class": "border-warn", "icon": "⚠️"}
+        return {"text": "判定保留", "class": "border-warn", "icon": "⚠️"}
     except Exception:
         return {"text": "エラー", "class": "border-warn", "icon": "⚠️"}
 
@@ -238,7 +257,12 @@ def create_result_card(site_name, icon, status, url):
 
 # --- Main UI ---
 st.markdown("### 🔍 キーワード入力")
-keyword_input = st.text_input("", placeholder="キーワードを入力 (例: 吾輩は猫である)", label_visibility="collapsed")
+keyword_input = st.text_input(
+    "",
+    placeholder="キーワードを入力 (例: 吾輩は猫である)",
+    label_visibility="collapsed",
+    key="keyword_input",
+)
 
 # 検索履歴表示
 if st.session_state.search_history:
@@ -246,7 +270,8 @@ if st.session_state.search_history:
     cols = st.columns(HISTORY_LIMIT)
     for i, hist_kw in enumerate(st.session_state.search_history[:HISTORY_LIMIT]):
         if cols[i].button(hist_kw, key=f"h_{i}", use_container_width=True):
-            keyword_input = hist_kw
+            st.session_state.keyword_input = hist_kw
+            st.rerun()
 
 # アクションエリア
 col_search, col_amazon = st.columns([1, 1])
@@ -256,11 +281,11 @@ with col_amazon:
         amazon_url = f"https://www.amazon.co.jp/s?k={urllib.parse.quote(keyword_input)}"
         st.markdown(f"""
         <a href="{amazon_url}" target="_blank" rel="noopener noreferrer" class="btn-amazon">
-            📦 Amazonでレビュー・人気本を探す ↗
+            📦 Amazonで本を探す ↗
         </a>
         """, unsafe_allow_html=True)
     else:
-        st.info("👆 キーワードを入力するとAmazon検索ボタンが表示されます")
+        st.info("👆 キーワードを入力するとAmazon検索した情報に飛びます")
 
 with col_search:
     should_search = st.button("📚 図書館・書店を検索", type="primary", use_container_width=True)
@@ -268,7 +293,7 @@ with col_search:
 st.markdown("---")
 
 # 検索実行ロジック
-if should_search or (keyword_input and keyword_input not in st.session_state.search_history and len(keyword_input) > 1 and should_search): # ボタン押下または履歴以外の入力でエンター（Streamlitの仕様上ボタン推奨）
+if should_search:
     if not keyword_input:
         st.warning("⚠️ キーワードを入力してください")
     else:
