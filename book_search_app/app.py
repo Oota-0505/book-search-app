@@ -1,25 +1,41 @@
+"""
+書籍横断検索アプリ
+
+岐阜市立図書館・可児市立図書館・三省堂（岐阜）・TSUTAYA（各務原）を一括検索する
+Streamlitアプリケーション
+"""
+
 import re
 import urllib.parse
 from typing import Dict, Optional, Tuple
-
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
 
-# Page Config
-st.set_page_config(page_title="本・図書館 横断検索", layout="wide", page_icon="📚")
+# ============================================================================
+# 設定・定数
+# ============================================================================
 
-# Constants
+# Page Config
+st.set_page_config(page_title="本検索アプリ", layout="wide", page_icon="📚")
+
+# HTTP設定
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-HISTORY_LIMIT = 5
-TSUTAYA_STORE_KEYWORD = "各務原"
 HEADERS = {"User-Agent": USER_AGENT}
 TIMEOUT_SHORT = 10
 TIMEOUT_MEDIUM = 15
 
+# アプリ設定
+HISTORY_LIMIT = 5
+TSUTAYA_STORE_KEYWORD = "各務原"
+
+# 型定義
 Status = Dict[str, str]
 
-# --- Custom CSS for Modern UI ---
+# ============================================================================
+# CSSスタイル
+# ============================================================================
+
 APP_CSS = """
 <style>
     :root {
@@ -210,37 +226,84 @@ APP_CSS = """
 """
 
 
+# ============================================================================
+# ユーティリティ関数
+# ============================================================================
+
 def make_status(text: str, css_class: str, icon: str) -> Status:
+    """
+    ステータス情報を生成する
+    
+    Args:
+        text: ステータステキスト
+        css_class: CSSクラス名
+        icon: アイコン文字列
+    
+    Returns:
+        ステータス辞書
+    """
     return {"text": text, "class": css_class, "icon": icon}
 
 
 def init_session_state() -> None:
+    """セッションステートを初期化"""
     if "search_history" not in st.session_state:
         st.session_state.search_history = []
 
-def add_to_history(kw):
-    """検索履歴に追加（最大5件）"""
-    if not kw:
+
+def add_to_history(keyword: str) -> None:
+    """
+    検索履歴に追加（最大5件）
+    
+    Args:
+        keyword: 検索キーワード
+    """
+    if not keyword:
         return
-    if kw in st.session_state.search_history:
-        st.session_state.search_history.remove(kw)
-    st.session_state.search_history.insert(0, kw)
+    if keyword in st.session_state.search_history:
+        st.session_state.search_history.remove(keyword)
+    st.session_state.search_history.insert(0, keyword)
     if len(st.session_state.search_history) > HISTORY_LIMIT:
         st.session_state.search_history = st.session_state.search_history[:HISTORY_LIMIT]
 
-def check_gifu_lib(keyword):
-    """岐阜市立図書館の在庫チェック"""
+
+# ============================================================================
+# 各サイトの在庫チェック関数
+# ============================================================================
+
+def check_gifu_lib(keyword: str) -> Status:
+    """
+    岐阜市立図書館の在庫チェック
+    
+    Args:
+        keyword: 検索キーワード
+    
+    Returns:
+        ステータス情報
+    """
     try:
         session = requests.Session()
-        headers = HEADERS
+        session.headers.update(HEADERS)
         
         # セッション初期化
-        session.get("https://www1.gifu-lib.jp/winj/opac/top.do", headers=headers, timeout=TIMEOUT_SHORT)
+        session.get(
+            "https://www1.gifu-lib.jp/winj/opac/top.do",
+            timeout=TIMEOUT_SHORT
+        )
         
         # 検索実行
         search_url = "https://www1.gifu-lib.jp/winj/opac/search-standard.do"
-        params = {"txt_word": keyword, "hid_word_column": "fulltext", "submit_btn_searchEasy": "search"}
-        res = session.get(search_url, params=params, headers=headers, timeout=TIMEOUT_SHORT, allow_redirects=True)
+        params = {
+            "txt_word": keyword,
+            "hid_word_column": "fulltext",
+            "submit_btn_searchEasy": "search"
+        }
+        res = session.get(
+            search_url,
+            params=params,
+            timeout=TIMEOUT_SHORT,
+            allow_redirects=True
+        )
         res.encoding = res.apparent_encoding
         
         # 判定（0件表現が複数あるため両方見る）
@@ -250,29 +313,47 @@ def check_gifu_lib(keyword):
         )
         if "g-mediacosmos.jp" in res.url or any(p in res.text for p in nohit_phrases):
             return make_status("なし", "border-ng", "❌")
-        else:
-            soup = BeautifulSoup(res.text, 'html.parser')
-            page_title = soup.title.string if soup.title else ""
-            if "検索結果" in page_title or "資料検索" in page_title:
-                return make_status("あり", "border-ok", "⭕️")
+        
+        soup = BeautifulSoup(res.text, 'html.parser')
+        page_title = soup.title.string if soup.title else ""
+        if "検索結果" in page_title or "資料検索" in page_title:
             return make_status("あり", "border-ok", "⭕️")
+        return make_status("あり", "border-ok", "⭕️")
     except Exception:
         return make_status("エラー", "border-warn", "⚠️")
 
-def check_kani_lib(keyword):
-    """可児市立図書館の在庫チェック"""
+
+def check_kani_lib(keyword: str) -> Status:
+    """
+    可児市立図書館の在庫チェック
+    
+    Args:
+        keyword: 検索キーワード
+    
+    Returns:
+        ステータス情報
+    """
     try:
         session = requests.Session()
         session.headers.update(HEADERS)
         
         # セッション初期化
-        session.get("https://www.kani-lib.jp/csp/opw/OPW/OPWSRCH1.CSP?DB=LIB&MODE=1", timeout=TIMEOUT_SHORT)
+        session.get(
+            "https://www.kani-lib.jp/csp/opw/OPW/OPWSRCH1.CSP?DB=LIB&MODE=1",
+            timeout=TIMEOUT_SHORT
+        )
         
         # 検索実行
         url = "https://www.kani-lib.jp/csp/opw/OPW/OPWSRCHLIST.CSP"
         params = {
-            "text(1)": keyword, "opr(1)": "OR", "DB": "LIB", "PID": "OPWSRCH1",
-            "FLG": "SEARCH", "MODE": "1", "SORT": "-3", "qual(1)": "MZALL"
+            "text(1)": keyword,
+            "opr(1)": "OR",
+            "DB": "LIB",
+            "PID": "OPWSRCH1",
+            "FLG": "SEARCH",
+            "MODE": "1",
+            "SORT": "-3",
+            "qual(1)": "MZALL"
         }
         res = session.get(url, params=params, timeout=TIMEOUT_MEDIUM)
         res.encoding = res.apparent_encoding
@@ -288,13 +369,28 @@ def check_kani_lib(keyword):
     except Exception:
         return make_status("エラー", "border-warn", "⚠️")
 
-def check_sanseido(keyword):
-    """三省堂岐阜の在庫チェック"""
+
+def check_sanseido(keyword: str) -> Status:
+    """
+    三省堂岐阜の在庫チェック
+    
+    Args:
+        keyword: 検索キーワード
+    
+    Returns:
+        ステータス情報
+    """
     try:
         url = "https://www.books-sanseido.jp/booksearch/BookSearchExec.action"
         params = {
-            "shopCode": "0458", "keyword": keyword, "defaultShopCode": "",
-            "title": "", "author": "", "isbn": "", "genreCode": "", "search": "検索"
+            "shopCode": "0458",
+            "keyword": keyword,
+            "defaultShopCode": "",
+            "title": "",
+            "author": "",
+            "isbn": "",
+            "genreCode": "",
+            "search": "検索"
         }
         res = requests.get(url, params=params, headers=HEADERS, timeout=TIMEOUT_SHORT)
         res.encoding = res.apparent_encoding
@@ -304,8 +400,8 @@ def check_sanseido(keyword):
             return make_status("なし", "border-ng", "❌")
 
         # 件数（例: "<strong>1</strong>件中"）
-        m = re.search(r'<strong>\s*(\d+)\s*</strong>\s*件中', res.text)
-        total = int(m.group(1)) if m else None
+        match = re.search(r'<strong>\s*(\d+)\s*</strong>\s*件中', res.text)
+        total = int(match.group(1)) if match else None
         if total == 0:
             return make_status("なし", "border-ng", "❌")
 
@@ -323,61 +419,143 @@ def check_sanseido(keyword):
     except Exception:
         return make_status("エラー", "border-warn", "⚠️")
 
+
 def _extract_first_tsutaya_work_id(html: str) -> Optional[str]:
-    """TSUTAYAキーワード検索結果HTMLから1位のworkIdを抽出（販売リンク）"""
+    """
+    TSUTAYAキーワード検索結果HTMLから1位のworkIdを抽出（販売リンク）
+    
+    Args:
+        html: HTML文字列
+    
+    Returns:
+        workId文字列、見つからない場合はNone
+    """
     try:
         soup = BeautifulSoup(html, "html.parser")
-        a = soup.find("a", href=re.compile(r"/search/result/select\?"))
-        if not a or not a.get("href"):
+        anchor = soup.find("a", href=re.compile(r"/search/result/select\?"))
+        if not anchor or not anchor.get("href"):
             return None
-        m = re.search(r"workId=(\d+)", a["href"])
-        return m.group(1) if m else None
+        match = re.search(r"workId=(\d+)", anchor["href"])
+        return match.group(1) if match else None
     except Exception:
         return None
+
 
 def _extract_tsutaya_product_key_from_select(work_id: str) -> Optional[str]:
-    """TSUTAYAのselectページを開き、productKey(ISBN/JAN)を抽出"""
+    """
+    TSUTAYAのselectページを開き、productKey(ISBN/JAN)を抽出
+    
+    Args:
+        work_id: 作品ID
+    
+    Returns:
+        productKey文字列、見つからない場合はNone
+    """
     try:
         select_url = "https://store-tsutaya.tsite.jp/search/result/select"
-        params = {"saleType": "sell", "workId": work_id, "itemType": "book"}
-        res = requests.get(select_url, params=params, headers=HEADERS, timeout=TIMEOUT_MEDIUM, allow_redirects=True)
+        params = {
+            "saleType": "sell",
+            "workId": work_id,
+            "itemType": "book"
+        }
+        res = requests.get(
+            select_url,
+            params=params,
+            headers=HEADERS,
+            timeout=TIMEOUT_MEDIUM,
+            allow_redirects=True
+        )
         # ページ内に在庫リンクがある（例: /search/result/stock?...&productKey=978...）
-        m = re.search(r"productKey=(\d+)", res.text)
-        if m:
-            return m.group(1)
+        match = re.search(r"productKey=(\d+)", res.text)
+        if match:
+            return match.group(1)
         # リダイレクトURL末尾にISBNが入るケース（.../43575108/978...）
-        m2 = re.search(r"/\d+/(\d{10,13})\b", res.url)
-        return m2.group(1) if m2 else None
+        match2 = re.search(r"/\d+/(\d{10,13})\b", res.url)
+        return match2.group(1) if match2 else None
     except Exception:
         return None
 
-def build_tsutaya_urls(keyword: str, store_keyword: str = TSUTAYA_STORE_KEYWORD) -> Dict[str, Optional[str]]:
-    """TSUTAYAの検索URLと（可能なら）各務原在庫URLを生成"""
-    search_url = f"https://store-tsutaya.tsite.jp/search/result/?keyword={urllib.parse.quote(keyword)}&itemType=book&limit=20"
+
+def build_tsutaya_urls(
+    keyword: str,
+    store_keyword: str = TSUTAYA_STORE_KEYWORD
+) -> Dict[str, Optional[str]]:
+    """
+    TSUTAYAの検索URLと（可能なら）各務原在庫URLを生成
+    
+    Args:
+        keyword: 検索キーワード
+        store_keyword: 店舗検索キーワード（デフォルト: "各務原"）
+    
+    Returns:
+        検索URL、在庫URL、work_id、product_keyを含む辞書
+    """
+    search_url = (
+        f"https://store-tsutaya.tsite.jp/search/result/"
+        f"?keyword={urllib.parse.quote(keyword)}&itemType=book&limit=20"
+    )
     try:
         res = requests.get(search_url, headers=HEADERS, timeout=TIMEOUT_MEDIUM)
         work_id = _extract_first_tsutaya_work_id(res.text)
         if not work_id:
-            return {"search_url": search_url, "stock_url": search_url, "work_id": None, "product_key": None}
+            return {
+                "search_url": search_url,
+                "stock_url": search_url,
+                "work_id": None,
+                "product_key": None
+            }
+        
         product_key = _extract_tsutaya_product_key_from_select(work_id)
         if not product_key:
-            return {"search_url": search_url, "stock_url": search_url, "work_id": work_id, "product_key": None}
+            return {
+                "search_url": search_url,
+                "stock_url": search_url,
+                "work_id": work_id,
+                "product_key": None
+            }
+        
         stock_url = (
             "https://store-tsutaya.tsite.jp/search/result/stock/result"
             f"?workId={work_id}&saleType=sell&itemType=book&productKey={product_key}"
             f"&storeSearchKeyword={urllib.parse.quote(store_keyword)}"
         )
-        return {"search_url": search_url, "stock_url": stock_url, "work_id": work_id, "product_key": product_key}
+        return {
+            "search_url": search_url,
+            "stock_url": stock_url,
+            "work_id": work_id,
+            "product_key": product_key
+        }
     except Exception:
-        return {"search_url": search_url, "stock_url": search_url, "work_id": None, "product_key": None}
+        return {
+            "search_url": search_url,
+            "stock_url": search_url,
+            "work_id": None,
+            "product_key": None
+        }
 
-def check_tsutaya(keyword: str, store_keyword: str = TSUTAYA_STORE_KEYWORD) -> Tuple[dict, str]:
-    """TSUTAYA（各務原）の在庫チェック（1位の候補を採用）"""
+
+def check_tsutaya(
+    keyword: str,
+    store_keyword: str = TSUTAYA_STORE_KEYWORD
+) -> Tuple[Status, str]:
+    """
+    TSUTAYA（各務原）の在庫チェック（1位の候補を採用）
+    
+    Args:
+        keyword: 検索キーワード
+        store_keyword: 店舗検索キーワード（デフォルト: "各務原"）
+    
+    Returns:
+        (ステータス情報, URL)のタプル
+    """
     try:
         urls = build_tsutaya_urls(keyword, store_keyword=store_keyword)
         # そもそも候補が取れない＝判定不可（リンクは検索ページへ）
         if not urls.get("work_id") or not urls.get("product_key"):
-            return {"text": "判定保留", "class": "border-warn", "icon": "⚠️"}, urls["stock_url"]
+            return (
+                make_status("判定保留", "border-warn", "⚠️"),
+                urls["stock_url"]
+            )
 
         res = requests.get(urls["stock_url"], headers=HEADERS, timeout=TIMEOUT_MEDIUM)
         res.encoding = res.apparent_encoding
@@ -387,18 +565,46 @@ def check_tsutaya(keyword: str, store_keyword: str = TSUTAYA_STORE_KEYWORD) -> T
             return make_status("なし", "border-ng", "❌"), urls["stock_url"]
         return make_status("判定保留", "border-warn", "⚠️"), urls["stock_url"]
     except Exception:
-        return make_status("エラー", "border-warn", "⚠️"), "https://store-tsutaya.tsite.jp/search/?sheader_item-search"
+        return (
+            make_status("エラー", "border-warn", "⚠️"),
+            "https://store-tsutaya.tsite.jp/search/?sheader_item-search"
+        )
 
-def check_status(keyword):
-    """全サイトの在庫状況をチェック"""
+
+def check_status(keyword: str) -> Dict[str, Status]:
+    """
+    全サイトの在庫状況をチェック
+    
+    Args:
+        keyword: 検索キーワード
+    
+    Returns:
+        各サイトのステータス情報を含む辞書
+    """
     return {
         'gifu': check_gifu_lib(keyword),
         'kani': check_kani_lib(keyword),
         'sanseido': check_sanseido(keyword),
     }
 
-def create_result_card(site_name, icon, status, url):
-    """検索結果カードのHTMLを生成"""
+
+# ============================================================================
+# UI生成関数
+# ============================================================================
+
+def create_result_card(site_name: str, icon: str, status: Status, url: str) -> str:
+    """
+    検索結果カードのHTMLを生成
+    
+    Args:
+        site_name: サイト名
+        icon: アイコン文字列
+        status: ステータス情報
+        url: リンクURL
+    
+    Returns:
+        HTML文字列
+    """
     pill_class_map = {
         "border-ok": "pill-ok",
         "border-ng": "pill-ng",
@@ -418,7 +624,157 @@ def create_result_card(site_name, icon, status, url):
     </div>
     """
 
+
+def build_gifu_url(keyword: str) -> str:
+    """
+    岐阜市立図書館の検索URLを生成
+    
+    Args:
+        keyword: 検索キーワード
+    
+    Returns:
+        URL文字列
+    """
+    params = {
+        "lang": "ja",
+        "txt_word": keyword,
+        "hid_word_column": "fulltext",
+        "submit_btn_searchEasy": "search"
+    }
+    base_url = "https://www1.gifu-lib.jp/winj/opac/search-standard.do"
+    return f"{base_url}?{urllib.parse.urlencode(params)}"
+
+
+def build_kani_url(keyword: str) -> str:
+    """
+    可児市立図書館の検索URLを生成
+    
+    Args:
+        keyword: 検索キーワード
+    
+    Returns:
+        URL文字列
+    """
+    params = {
+        "opr(1)": "OR",
+        "DB": "LIB",
+        "PID": "OPWSRCH1",
+        "FLG": "SEARCH",
+        "MODE": "1",
+        "SORT": "-3",
+        "qual(1)": "MZALL",
+        "text(1)": keyword
+    }
+    base_url = "https://www.kani-lib.jp/csp/opw/OPW/OPWSRCHLIST.CSP"
+    return f"{base_url}?{urllib.parse.urlencode(params)}"
+
+
+def build_sanseido_url(keyword: str) -> str:
+    """
+    三省堂（岐阜）の検索URLを生成
+    
+    Args:
+        keyword: 検索キーワード
+    
+    Returns:
+        URL文字列
+    """
+    params = {
+        "shopCode": "0458",
+        "keyword": keyword,
+        "defaultShopCode": "",
+        "title": "",
+        "author": "",
+        "isbn": "",
+        "genreCode": "",
+        "search": "検索",
+    }
+    base_url = "https://www.books-sanseido.jp/booksearch/BookSearchExec.action"
+    return f"{base_url}?{urllib.parse.urlencode(params)}"
+
+
+def build_amazon_url(keyword: str) -> str:
+    """
+    Amazonの検索URLを生成
+    
+    Args:
+        keyword: 検索キーワード
+    
+    Returns:
+        URL文字列
+    """
+    return f"https://www.amazon.co.jp/s?k={urllib.parse.quote(keyword)}"
+
+
+# ============================================================================
+# メインアプリケーション
+# ============================================================================
+
+def render_search_history() -> None:
+    """検索履歴を表示"""
+    if not st.session_state.search_history:
+        return
+    
+    st.caption("🕒 検索履歴:")
+    cols = st.columns(HISTORY_LIMIT)
+    for i, hist_kw in enumerate(st.session_state.search_history[:HISTORY_LIMIT]):
+        if cols[i].button(hist_kw, key=f"h_{i}", use_container_width=True):
+            st.session_state.keyword_input = hist_kw
+            st.rerun()
+
+
+def render_search_results(keyword: str) -> None:
+    """
+    検索結果を表示
+    
+    Args:
+        keyword: 検索キーワード
+    """
+    st.subheader(f"「{keyword}」の検索結果")
+
+    with st.spinner("各サイトを検索中..."):
+        status = check_status(keyword)
+        tsutaya_status, tsutaya_url = check_tsutaya(keyword, store_keyword=TSUTAYA_STORE_KEYWORD)
+
+        # 2x2 レイアウト（スマホでも見やすい）
+        r1c1, r1c2 = st.columns(2)
+        r2c1, r2c2 = st.columns(2)
+
+        with r1c1:
+            gifu_url = build_gifu_url(keyword)
+            st.markdown(
+                create_result_card("岐阜市立図書館", "🏢", status["gifu"], gifu_url),
+                unsafe_allow_html=True
+            )
+
+        with r1c2:
+            kani_url = build_kani_url(keyword)
+            st.markdown(
+                create_result_card("可児市立図書館", "🌲", status["kani"], kani_url),
+                unsafe_allow_html=True
+            )
+
+        with r2c1:
+            sanseido_url = build_sanseido_url(keyword)
+            st.markdown(
+                create_result_card("三省堂（岐阜）", "📖", status["sanseido"], sanseido_url),
+                unsafe_allow_html=True
+            )
+
+        with r2c2:
+            st.markdown(
+                create_result_card(
+                    f"TSUTAYA（{TSUTAYA_STORE_KEYWORD}）",
+                    "🏪",
+                    tsutaya_status,
+                    tsutaya_url
+                ),
+                unsafe_allow_html=True,
+            )
+
+
 def main() -> None:
+    """メインアプリケーション"""
     st.markdown(APP_CSS, unsafe_allow_html=True)
     st.title("📚 Book Finder")
     st.caption("岐阜市図書館・可児市図書館・三省堂（岐阜）・TSUTAYA（各務原）を一括検索")
@@ -428,26 +784,20 @@ def main() -> None:
     st.markdown("### 🔍 キーワード入力")
     keyword_input = st.text_input(
         "キーワード",
-        placeholder="キーワードを入力 (例: 吾輩は猫である)",
+        placeholder="キーワードを入力",
         label_visibility="collapsed",
         key="keyword_input",
     )
 
     # 検索履歴表示
-    if st.session_state.search_history:
-        st.caption("🕒 検索履歴:")
-        cols = st.columns(HISTORY_LIMIT)
-        for i, hist_kw in enumerate(st.session_state.search_history[:HISTORY_LIMIT]):
-            if cols[i].button(hist_kw, key=f"h_{i}", use_container_width=True):
-                st.session_state.keyword_input = hist_kw
-                st.rerun()
+    render_search_history()
 
     # アクションエリア
     col_search, col_amazon = st.columns([1, 1])
 
     with col_amazon:
         if keyword_input:
-            amazon_url = f"https://www.amazon.co.jp/s?k={urllib.parse.quote(keyword_input)}"
+            amazon_url = build_amazon_url(keyword_input)
             st.markdown(
                 f"""
                 <a href="{amazon_url}" target="_blank" rel="noopener noreferrer" class="btn-amazon">
@@ -457,10 +807,14 @@ def main() -> None:
                 unsafe_allow_html=True,
             )
         else:
-            st.info("👆 キーワードを入力するとAmazon検索した情報に飛びます")
+            st.info("👆本の具体化はAmazon検索")
 
     with col_search:
-        should_search = st.button("📚 図書館・書店を検索", type="primary", use_container_width=True)
+        should_search = st.button(
+            "📚 図書館・書店を検索",
+            type="primary",
+            use_container_width=True
+        )
 
     st.markdown("---")
 
@@ -469,54 +823,10 @@ def main() -> None:
             st.warning("⚠️ キーワードを入力してください")
         else:
             add_to_history(keyword_input)
-
-            st.subheader(f"「{keyword_input}」の検索結果")
-
-            with st.spinner("各サイトを検索中..."):
-                status = check_status(keyword_input)
-
-                # TSUTAYA（各務原）: 1位の候補を採用して在庫ページまで作る
-                tsutaya_status, tsutaya_url = check_tsutaya(keyword_input, store_keyword=TSUTAYA_STORE_KEYWORD)
-
-                # 2x2 レイアウト（スマホでも見やすい）
-                r1c1, r1c2 = st.columns(2)
-                r2c1, r2c2 = st.columns(2)
-
-                with r1c1:
-                    gifu_url = (
-                        "https://www1.gifu-lib.jp/winj/opac/search-standard.do"
-                        f"?lang=ja&txt_word={urllib.parse.quote(keyword_input)}&hid_word_column=fulltext&submit_btn_searchEasy=search"
-                    )
-                    st.markdown(create_result_card("岐阜市立図書館", "🏢", status["gifu"], gifu_url), unsafe_allow_html=True)
-
-                with r1c2:
-                    kani_url = (
-                        "https://www.kani-lib.jp/csp/opw/OPW/OPWSRCHLIST.CSP"
-                        f"?opr(1)=OR&DB=LIB&PID=OPWSRCH1&FLG=SEARCH&MODE=1&SORT=-3&qual(1)=MZALL&text(1)={urllib.parse.quote(keyword_input)}"
-                    )
-                    st.markdown(create_result_card("可児市立図書館", "🌲", status["kani"], kani_url), unsafe_allow_html=True)
-
-                with r2c1:
-                    sanseido_params = {
-                        "shopCode": "0458",
-                        "keyword": keyword_input,
-                        "defaultShopCode": "",
-                        "title": "",
-                        "author": "",
-                        "isbn": "",
-                        "genreCode": "",
-                        "search": "検索",
-                    }
-                    sanseido_url = f"https://www.books-sanseido.jp/booksearch/BookSearchExec.action?{urllib.parse.urlencode(sanseido_params)}"
-                    st.markdown(create_result_card("三省堂（岐阜）", "📖", status["sanseido"], sanseido_url), unsafe_allow_html=True)
-
-                with r2c2:
-                    st.markdown(
-                        create_result_card(f"TSUTAYA（{TSUTAYA_STORE_KEYWORD}）", "🏪", tsutaya_status, tsutaya_url),
-                        unsafe_allow_html=True,
-                    )
+            render_search_results(keyword_input)
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
 
-main()
+if __name__ == "__main__":
+    main()
