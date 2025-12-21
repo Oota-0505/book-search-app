@@ -1,7 +1,7 @@
 """
 書籍横断検索アプリ
 
-岐阜市立図書館・可児市立図書館・三省堂（岐阜）・TSUTAYA（各務原）を一括検索する
+岐阜市立図書館・可児市立図書館・岐阜駅本屋・草叢BOOKSを一括検索する
 Streamlitアプリケーション
 """
 
@@ -27,7 +27,7 @@ TIMEOUT_MEDIUM = 15
 
 # アプリ設定
 HISTORY_LIMIT = 5
-TSUTAYA_STORE_KEYWORD = "各務原"
+KUSA_BOOKS_KEYWORD = "草叢BOOKS"
 
 # 型定義
 Status = Dict[str, str]
@@ -53,6 +53,8 @@ APP_CSS = """
         --warn: #F59E0B;
         --amber0: #FF9900;
         --amber1: #FF6A00;
+        --green0: #10B981;
+        --green1: #059669;
     }
 
     /* App background & typography */
@@ -96,6 +98,7 @@ APP_CSS = """
         border-radius: 12px !important;
         transition: transform 0.15s ease, box-shadow 0.15s ease !important;
         box-shadow: 0 10px 18px rgba(59, 130, 246, 0.22) !important;
+        min-height: 48px !important;
     }
     button[data-testid="stBaseButton-primary"]:hover {
         background: linear-gradient(90deg, #4338CA 0%, #2563EB 100%) !important;
@@ -191,29 +194,128 @@ APP_CSS = """
     .pill-warn { border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.12); }
 
     /* Link buttons */
-    .btn-link, .btn-amazon {
-        display: block;
+    .btn-link {
+        display: flex !important;
         width: 100%;
         text-align: center;
         color: white !important;
         text-decoration: none;
         border-radius: 12px;
         font-weight: 800;
-        padding: 11px 0;
+        padding: 0.70rem 1rem !important;
+        min-height: 48px !important;
+        align-items: center !important;
+        justify-content: center !important;
         box-shadow: 0 10px 18px rgba(2,6,23,0.10);
         transition: transform 0.15s ease, box-shadow 0.15s ease;
         line-height: 1.4;
-    }
-    .btn-link {
         background: linear-gradient(135deg, var(--blue0) 0%, var(--blue1) 100%);
     }
-    .btn-amazon {
-        background: linear-gradient(135deg, var(--amber0) 0%, var(--amber1) 100%);
-    }
-    .btn-link:hover, .btn-amazon:hover {
+    .btn-link:hover {
         transform: translateY(-1px);
         box-shadow: 0 14px 24px rgba(2,6,23,0.14);
         filter: brightness(1.02);
+    }
+    
+    /* Amazon button - separate styling */
+    a.btn-amazon {
+        display: flex !important;
+        width: 100% !important;
+        text-align: center !important;
+        color: white !important;
+        text-decoration: none !important;
+        border-radius: 12px !important;
+        font-weight: 800 !important;
+        padding: 0.70rem 1rem !important;
+        min-height: 48px !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 10px 18px rgba(16, 185, 129, 0.22) !important;
+        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+        line-height: 1.4 !important;
+        background: linear-gradient(135deg, var(--green0) 0%, var(--green1) 100%) !important;
+        border: none !important;
+        margin: 0 !important;
+    }
+    a.btn-amazon:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 14px 24px rgba(16, 185, 129, 0.28) !important;
+        filter: brightness(1.02) !important;
+        color: white !important;
+    }
+
+    /* Alert/Info styling */
+    div[data-testid="stAlertContainer"] {
+        border-radius: 12px !important;
+        border: 1px solid rgba(16, 185, 129, 0.2) !important;
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.08) 100%) !important;
+        padding: 1rem !important;
+        box-shadow: 0 4px 10px rgba(16, 185, 129, 0.08) !important;
+        font-weight: 600 !important;
+        color: var(--text) !important;
+        margin: 0 !important;
+        width: 100% !important;
+    }
+
+    /* Loading (stylish bounce dots) */
+    .loading-container {
+        width: 100%;
+        padding: 40px 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        margin: 20px 0;
+    }
+    .loading-dots {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+    }
+    .loading-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        animation: bounce 1.4s ease-in-out infinite;
+    }
+    .loading-dot:nth-child(1) {
+        background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%);
+        animation-delay: 0s;
+    }
+    .loading-dot:nth-child(2) {
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        animation-delay: 0.2s;
+    }
+    .loading-dot:nth-child(3) {
+        background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+        animation-delay: 0.4s;
+    }
+    @keyframes bounce {
+        0%, 80%, 100% {
+            transform: scale(0.6);
+            opacity: 0.5;
+        }
+        40% {
+            transform: scale(1.2);
+            opacity: 1;
+        }
+    }
+    .loading-message {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--text);
+        text-align: center;
+        letter-spacing: -0.01em;
+    }
+    .loading-submessage {
+        font-size: 0.9rem;
+        color: var(--muted);
+        text-align: center;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .loading-dot { animation: none; opacity: 1; transform: scale(1); }
     }
 
     /* Small screens tweaks */
@@ -372,7 +474,7 @@ def check_kani_lib(keyword: str) -> Status:
 
 def check_sanseido(keyword: str) -> Status:
     """
-    三省堂岐阜の在庫チェック
+    岐阜駅本屋の在庫チェック
     
     Args:
         keyword: 検索キーワード
@@ -422,7 +524,7 @@ def check_sanseido(keyword: str) -> Status:
 
 def _extract_first_tsutaya_work_id(html: str) -> Optional[str]:
     """
-    TSUTAYAキーワード検索結果HTMLから1位のworkIdを抽出（販売リンク）
+    草叢BOOKSキーワード検索結果HTMLから1位のworkIdを抽出（販売リンク）
     
     Args:
         html: HTML文字列
@@ -443,7 +545,7 @@ def _extract_first_tsutaya_work_id(html: str) -> Optional[str]:
 
 def _extract_tsutaya_product_key_from_select(work_id: str) -> Optional[str]:
     """
-    TSUTAYAのselectページを開き、productKey(ISBN/JAN)を抽出
+    草叢BOOKSのselectページを開き、productKey(ISBN/JAN)を抽出
     
     Args:
         work_id: 作品ID
@@ -478,10 +580,10 @@ def _extract_tsutaya_product_key_from_select(work_id: str) -> Optional[str]:
 
 def build_tsutaya_urls(
     keyword: str,
-    store_keyword: str = TSUTAYA_STORE_KEYWORD
+    store_keyword: str = KUSA_BOOKS_KEYWORD
 ) -> Dict[str, Optional[str]]:
     """
-    TSUTAYAの検索URLと（可能なら）各務原在庫URLを生成
+    草叢BOOKSの検索URLと在庫URLを生成
     
     Args:
         keyword: 検索キーワード
@@ -536,10 +638,10 @@ def build_tsutaya_urls(
 
 def check_tsutaya(
     keyword: str,
-    store_keyword: str = TSUTAYA_STORE_KEYWORD
+    store_keyword: str = KUSA_BOOKS_KEYWORD
 ) -> Tuple[Status, str]:
     """
-    TSUTAYA（各務原）の在庫チェック（1位の候補を採用）
+    草叢BOOKSの在庫チェック（1位の候補を採用）
     
     Args:
         keyword: 検索キーワード
@@ -671,7 +773,7 @@ def build_kani_url(keyword: str) -> str:
 
 def build_sanseido_url(keyword: str) -> str:
     """
-    三省堂（岐阜）の検索URLを生成
+    岐阜駅本屋の検索URLを生成
     
     Args:
         keyword: 検索キーワード
@@ -732,52 +834,72 @@ def render_search_results(keyword: str) -> None:
     """
     st.subheader(f"「{keyword}」の検索結果")
 
-    with st.spinner("各サイトを検索中..."):
-        status = check_status(keyword)
-        tsutaya_status, tsutaya_url = check_tsutaya(keyword, store_keyword=TSUTAYA_STORE_KEYWORD)
+    # カスタムローダーを表示
+    loader_placeholder = st.empty()
+    loader_placeholder.markdown(
+        """
+        <div class="loading-container">
+            <div class="loading-dots">
+                <div class="loading-dot"></div>
+                <div class="loading-dot"></div>
+                <div class="loading-dot"></div>
+            </div>
+            <div class="loading-message">📚 各サイトを検索中...</div>
+            <div class="loading-submessage">図書館・書店の在庫を確認しています</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # 検索実行
+    status = check_status(keyword)
+    tsutaya_status, tsutaya_url = check_tsutaya(keyword, store_keyword=KUSA_BOOKS_KEYWORD)
+    
+    # ローダーを消す
+    loader_placeholder.empty()
 
-        # 2x2 レイアウト（スマホでも見やすい）
-        r1c1, r1c2 = st.columns(2)
-        r2c1, r2c2 = st.columns(2)
+    # 2x2 レイアウト（スマホでも見やすい）
+    r1c1, r1c2 = st.columns(2)
+    r2c1, r2c2 = st.columns(2)
 
-        with r1c1:
-            gifu_url = build_gifu_url(keyword)
-            st.markdown(
-                create_result_card("岐阜市立図書館", "🏢", status["gifu"], gifu_url),
-                unsafe_allow_html=True
-            )
+    with r1c1:
+        gifu_url = build_gifu_url(keyword)
+        st.markdown(
+            create_result_card("岐阜市立図書館", "🏢", status["gifu"], gifu_url),
+            unsafe_allow_html=True
+        )
 
-        with r1c2:
-            kani_url = build_kani_url(keyword)
-            st.markdown(
-                create_result_card("可児市立図書館", "🌲", status["kani"], kani_url),
-                unsafe_allow_html=True
-            )
+    with r1c2:
+        kani_url = build_kani_url(keyword)
+        st.markdown(
+            create_result_card("可児市立図書館", "🌲", status["kani"], kani_url),
+            unsafe_allow_html=True
+        )
 
-        with r2c1:
-            sanseido_url = build_sanseido_url(keyword)
-            st.markdown(
-                create_result_card("三省堂（岐阜）", "📖", status["sanseido"], sanseido_url),
-                unsafe_allow_html=True
-            )
+    with r2c1:
+        sanseido_url = build_sanseido_url(keyword)
+        st.markdown(
+            create_result_card("岐阜駅本屋", "📖", status["sanseido"], sanseido_url),
+            unsafe_allow_html=True
+        )
 
-        with r2c2:
-            st.markdown(
-                create_result_card(
-                    f"TSUTAYA（{TSUTAYA_STORE_KEYWORD}）",
-                    "🏪",
-                    tsutaya_status,
-                    tsutaya_url
-                ),
-                unsafe_allow_html=True,
-            )
+    with r2c2:
+        st.markdown(
+            create_result_card(
+                "草叢BOOKS",
+                "☕",
+                tsutaya_status,
+                tsutaya_url
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 def main() -> None:
     """メインアプリケーション"""
     st.markdown(APP_CSS, unsafe_allow_html=True)
     st.title("📚 Book Finder")
-    st.caption("岐阜市図書館・可児市図書館・三省堂（岐阜）・TSUTAYA（各務原）を一括検索")
+    st.caption("岐阜市図書館・可児市図書館・岐阜駅本屋・草叢BOOKSを一括検索")
 
     init_session_state()
 
@@ -796,18 +918,17 @@ def main() -> None:
     col_search, col_amazon = st.columns([1, 1])
 
     with col_amazon:
-        if keyword_input:
-            amazon_url = build_amazon_url(keyword_input)
-            st.markdown(
-                f"""
-                <a href="{amazon_url}" target="_blank" rel="noopener noreferrer" class="btn-amazon">
-                    📦 Amazonで本を探す ↗
-                </a>
-                """,
-                unsafe_allow_html=True,
-            )
-        else:
-            st.info("👆本の具体化はAmazon検索")
+        # キーワードがない場合は空文字列で検索（またはトップページ）
+        search_keyword = keyword_input if keyword_input else ""
+        amazon_url = build_amazon_url(search_keyword) if search_keyword else "https://www.amazon.co.jp/s?k="
+        st.markdown(
+            f"""
+            <a href="{amazon_url}" target="_blank" rel="noopener noreferrer" class="btn-amazon">
+                📦 Amazonで本を探す ↗
+            </a>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with col_search:
         should_search = st.button(
