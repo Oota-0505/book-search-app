@@ -27,7 +27,7 @@ TIMEOUT_MEDIUM = 15
 
 # アプリ設定
 HISTORY_LIMIT = 5
-KUSA_BOOKS_KEYWORD = "草叢BOOKS"
+KUSA_BOOKS_KEYWORD = "各務原店"
 
 # 型定義
 Status = Dict[str, str]
