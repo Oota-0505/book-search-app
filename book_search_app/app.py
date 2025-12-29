@@ -467,10 +467,7 @@ def render_book_summary_section(keyword: str) -> None:
     """
     book = fetch_book_info_google_books(keyword)
     if not book:
-        return
-
-    description = book.get("description")
-    if not description or description == "不明":
+        # 本が見つからない場合は何も表示しない（またはメッセージを出すことも可能）
         return
 
     title = book.get("title") or keyword
@@ -481,34 +478,39 @@ def render_book_summary_section(keyword: str) -> None:
     isbn = book.get("isbn13") or book.get("isbn10") or "不明"
     info_link = book.get("infoLink")
     thumb = book.get("thumbnail")
-
-    # 説明文を5行程度（最初の5文または300文字程度）に簡略化
-    sentences = description.split('。')
-    # 空文字列を除く
-    sentences = [s.strip() for s in sentences if s.strip()]
     
+    description = book.get("description")
     summary = ""
-    if not sentences:
-        # 文区切りができない場合は単純カット
-        summary = description[:300].rstrip('。') + '...'
-    else:
-        # 最初の5文までを結合（最大300文字程度）
-        summary_parts = []
-        total_length = 0
-        for i, sentence in enumerate(sentences[:5]):
-            if total_length + len(sentence) > 300:
-                break
-            summary_parts.append(sentence)
-            total_length += len(sentence) + 1
+    
+    if description and description != "不明":
+        # 説明文を5行程度（最初の5文または300文字程度）に簡略化
+        sentences = description.split('。')
+        # 空文字列を除く
+        sentences = [s.strip() for s in sentences if s.strip()]
         
-        if not summary_parts:
+        if not sentences:
+            # 文区切りができない場合は単純カット
             summary = description[:300].rstrip('。') + '...'
         else:
-            summary = '。'.join(summary_parts)
-            if not summary.endswith('。'):
-                summary += '。'
-            if len(sentences) > len(summary_parts):
-                summary += '...'
+            # 最初の5文までを結合（最大300文字程度）
+            summary_parts = []
+            total_length = 0
+            for i, sentence in enumerate(sentences[:5]):
+                if total_length + len(sentence) > 300:
+                    break
+                summary_parts.append(sentence)
+                total_length += len(sentence) + 1
+            
+            if not summary_parts:
+                summary = description[:300].rstrip('。') + '...'
+            else:
+                summary = '。'.join(summary_parts)
+                if not summary.endswith('。'):
+                    summary += '。'
+                if len(sentences) > len(summary_parts):
+                    summary += '...'
+    else:
+        summary = "（説明文がありません）"
 
     st.markdown("---")
     
