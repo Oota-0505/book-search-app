@@ -7,7 +7,7 @@ Streamlitアプリケーション
 
 import re
 import urllib.parse
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
@@ -28,6 +28,9 @@ TIMEOUT_MEDIUM = 15
 # アプリ設定
 HISTORY_LIMIT = 5
 KUSA_BOOKS_KEYWORD = "各務原店"
+
+# 外部API（書誌情報）
+GOOGLE_BOOKS_API_URL = "https://www.googleapis.com/books/v1/volumes"
 
 # 型定義
 Status = Dict[str, str]
@@ -318,6 +321,41 @@ APP_CSS = """
         .loading-dot { animation: none; opacity: 1; transform: scale(1); }
     }
 
+    /* Summary card (Book Info) */
+    .summary-card {
+        background: rgba(255,255,255,0.95);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 24px;
+        margin: 20px 0;
+        box-shadow: var(--shadow);
+    }
+    .summary-title {
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: #1E3A8A;
+        margin-bottom: 4px;
+        line-height: 1.3;
+    }
+    .summary-meta {
+        font-size: 0.95rem;
+        color: var(--muted);
+        margin-bottom: 16px;
+        font-weight: 500;
+    }
+    .summary-text {
+        font-size: 1.05rem;
+        line-height: 1.7;
+        color: var(--text);
+        margin-top: 12px;
+    }
+    .summary-img {
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        max-width: 100%;
+        height: auto;
+    }
+
     /* Small screens tweaks */
     @media (max-width: 640px) {
         .block-container { padding-top: 1.4rem; }
@@ -368,6 +406,152 @@ def add_to_history(keyword: str) -> None:
     if len(st.session_state.search_history) > HISTORY_LIMIT:
         st.session_state.search_history = st.session_state.search_history[:HISTORY_LIMIT]
 
+
+@st.cache_data(ttl=60 * 60 * 24, show_spinner=False)
+def fetch_book_info_google_books(keyword: str) -> Optional[Dict[str, Any]]:
+    """
+    Google Books APIからキーワードに最も近い1冊の書誌情報を取得する（無料枠あり）
+    """
+    try:
+        params = {
+            "q": keyword,
+            "maxResults": 1,
+            "printType": "books",
+            "langRestrict": "ja",
+        }
+        res = requests.get(
+            GOOGLE_BOOKS_API_URL,
+            params=params,
+            headers=HEADERS,
+            timeout=TIMEOUT_MEDIUM,
+        )
+        res.raise_for_status()
+        data = res.json()
+        items = data.get("items") or []
+        if not items:
+            return None
+
+        volume_info = (items[0] or {}).get("volumeInfo") or {}
+        identifiers = volume_info.get("industryIdentifiers") or []
+        isbn_13 = None
+        isbn_10 = None
+        for it in identifiers:
+            if (it or {}).get("type") == "ISBN_13":
+                isbn_13 = (it or {}).get("identifier")
+            if (it or {}).get("type") == "ISBN_10":
+                isbn_10 = (it or {}).get("identifier")
+
+        image_links = volume_info.get("imageLinks") or {}
+        return {
+            "title": volume_info.get("title"),
+            "subtitle": volume_info.get("subtitle"),
+            "authors": volume_info.get("authors") or [],
+            "publisher": volume_info.get("publisher"),
+            "publishedDate": volume_info.get("publishedDate"),
+            "description": volume_info.get("description"),
+            "categories": volume_info.get("categories") or [],
+            "pageCount": volume_info.get("pageCount"),
+            "language": volume_info.get("language"),
+            "thumbnail": image_links.get("thumbnail") or image_links.get("smallThumbnail"),
+            "infoLink": volume_info.get("infoLink"),
+            "isbn13": isbn_13,
+            "isbn10": isbn_10,
+        }
+    except Exception:
+        return None
+
+
+def render_book_summary_section(keyword: str) -> None:
+    """
+    検索結果の下に、本の概要（Google Booksから取得した説明文を5行程度で表示）を表示する
+    """
+    book = fetch_book_info_google_books(keyword)
+    if not book:
+        return
+
+    description = book.get("description")
+    if not description or description == "不明":
+        return
+
+    title = book.get("title") or keyword
+    subtitle = book.get("subtitle")
+    authors_list = book.get("authors") or []
+    authors = " / ".join(authors_list) if authors_list else "不明"
+    published_date = book.get("publishedDate") or "不明"
+    isbn = book.get("isbn13") or book.get("isbn10") or "不明"
+    info_link = book.get("infoLink")
+    thumb = book.get("thumbnail")
+
+    # 説明文を5行程度（最初の5文または300文字程度）に簡略化
+    sentences = description.split('。')
+    # 空文字列を除く
+    sentences = [s.strip() for s in sentences if s.strip()]
+    
+    summary = ""
+    if not sentences:
+        # 文区切りができない場合は単純カット
+        summary = description[:300].rstrip('。') + '...'
+    else:
+        # 最初の5文までを結合（最大300文字程度）
+        summary_parts = []
+        total_length = 0
+        for i, sentence in enumerate(sentences[:5]):
+            if total_length + len(sentence) > 300:
+                break
+            summary_parts.append(sentence)
+            total_length += len(sentence) + 1
+        
+        if not summary_parts:
+            summary = description[:300].rstrip('。') + '...'
+        else:
+            summary = '。'.join(summary_parts)
+            if not summary.endswith('。'):
+                summary += '。'
+            if len(sentences) > len(summary_parts):
+                summary += '...'
+
+    st.markdown("---")
+    
+    # HTMLでリッチなデザインを生成
+    # 画像がある場合とない場合でレイアウト調整
+    
+    img_html = ""
+    if thumb:
+        # 高解像度版があれば置換（zoom=1 -> zoom=0など）するテクニックもあるが、
+        # ここでは標準のサムネイルを使用し、CSSで影などをつける
+        img_html = f'<img src="{thumb}" class="summary-img" alt="{title}">'
+    else:
+        # 画像なしの場合はプレースホルダーアイコン
+        img_html = '<div style="font-size:4rem; text-align:center;">📚</div>'
+
+    subtitle_html = f'<div style="color: #64748B; font-weight: 700; margin-bottom: 4px;">{subtitle}</div>' if subtitle else ""
+    
+    html_content = f"""
+    <div class="summary-card">
+        <div style="display: flex; gap: 24px; flex-wrap: wrap;">
+            <div style="flex: 0 0 140px; min-width: 140px; display: flex; justify-content: center; align-items: flex-start;">
+                {img_html}
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <div class="summary-title">{title}</div>
+                {subtitle_html}
+                <div class="summary-meta">
+                    著者: {authors} | 出版: {published_date}<br>
+                    ISBN: {isbn}
+                </div>
+                <div style="border-top: 2px solid #F1F5F9; margin: 12px 0;"></div>
+                <div class="summary-text">
+                    {summary}
+                </div>
+                <div style="margin-top: 16px; text-align: right;">
+                    <a href="{info_link}" target="_blank" style="color: #3B82F6; font-weight: 700; text-decoration: none;">Google Booksで詳細を見る ↗</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    """
+    
+    st.markdown(html_content, unsafe_allow_html=True)
 
 # ============================================================================
 # 各サイトの在庫チェック関数
@@ -893,6 +1077,9 @@ def render_search_results(keyword: str) -> None:
             ),
             unsafe_allow_html=True,
         )
+
+    # 検索結果の下に本の概要を表示
+    render_book_summary_section(keyword)
 
 
 def main() -> None:
