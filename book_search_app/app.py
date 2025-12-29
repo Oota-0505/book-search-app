@@ -417,7 +417,7 @@ def fetch_book_info_google_books(keyword: str) -> Optional[Dict[str, Any]]:
             "q": keyword,
             "maxResults": 1,
             "printType": "books",
-            "langRestrict": "ja",
+            # langRestrict は削除（日本語以外の本も検索可能にする）
         }
         res = requests.get(
             GOOGLE_BOOKS_API_URL,
@@ -457,7 +457,13 @@ def fetch_book_info_google_books(keyword: str) -> Optional[Dict[str, Any]]:
             "isbn13": isbn_13,
             "isbn10": isbn_10,
         }
-    except Exception:
+    except requests.exceptions.RequestException as e:
+        # ネットワークエラーやタイムアウトなど
+        print(f"Google Books API リクエストエラー: {type(e).__name__}: {str(e)}")
+        return None
+    except Exception as e:
+        # その他の予期しないエラー
+        print(f"Google Books API 予期しないエラー: {type(e).__name__}: {str(e)}")
         return None
 
 
@@ -467,7 +473,11 @@ def render_book_summary_section(keyword: str) -> None:
     """
     book = fetch_book_info_google_books(keyword)
     if not book:
-        # 本が見つからない場合は何も表示しない（またはメッセージを出すことも可能）
+        # 本が見つからない場合は何も表示しない
+        # デバッグ用: 環境変数でエラー表示を有効化できる
+        import os
+        if os.getenv("DEBUG_BOOK_API", "").lower() == "true":
+            st.warning(f"⚠️ Google Books API: 「{keyword}」に該当する本が見つかりませんでした。")
         return
 
     title = book.get("title") or keyword
