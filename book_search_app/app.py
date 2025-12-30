@@ -5,6 +5,7 @@
 Streamlitアプリケーション
 """
 
+import os
 import re
 import time
 import urllib.parse
@@ -559,14 +560,10 @@ def render_book_summary_section(keyword: str) -> None:
     検索結果の下に、本の概要（Google Booksから取得した説明文を5行程度で表示）を表示する
     """
     # デバッグモード: 環境変数またはセッションステートで有効化
-    import os
     debug_mode = os.getenv("DEBUG_BOOK_API", "").lower() == "true" or st.session_state.get("debug_book_api", False)
     
-    # キャッシュを無効化するオプション（エラー時に再試行するため）
-    cache_clear_key = st.session_state.get("cache_clear_key", "default")
-    
     try:
-        book = fetch_book_info_google_books(keyword, debug=debug_mode, cache_version=f"{_CACHE_VERSION}_{cache_clear_key}")
+        book = fetch_book_info_google_books(keyword, debug=debug_mode, cache_version=_CACHE_VERSION)
     except Exception as e:
         if debug_mode:
             st.error(f"❌ Google Books API エラー: {str(e)}")
