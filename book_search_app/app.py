@@ -23,7 +23,7 @@ st.set_page_config(page_title="本検索アプリ", layout="wide", page_icon="�
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 HEADERS = {"User-Agent": USER_AGENT}
 TIMEOUT_SHORT = 10
-TIMEOUT_MEDIUM = 15
+TIMEOUT_MEDIUM = 20  # Google Books API用に延長
 
 # アプリ設定
 HISTORY_LIMIT = 5
@@ -407,10 +407,14 @@ def add_to_history(keyword: str) -> None:
         st.session_state.search_history = st.session_state.search_history[:HISTORY_LIMIT]
 
 
-@st.cache_data(ttl=60 * 60 * 24, show_spinner=False)
-def fetch_book_info_google_books(keyword: str) -> Optional[Dict[str, Any]]:
+@st.cache_data(ttl=60 * 60 * 24, show_spinner=False, max_entries=100)
+def fetch_book_info_google_books(keyword: str, debug: bool = False) -> Optional[Dict[str, Any]]:
     """
     Google Books APIからキーワードに最も近い1冊の書誌情報を取得する（無料枠あり）
+    
+    Args:
+        keyword: 検索キーワード
+        debug: デバッグモード（エラーを画面に表示）
     """
     try:
         params = {
@@ -419,6 +423,9 @@ def fetch_book_info_google_books(keyword: str) -> Optional[Dict[str, Any]]:
             "printType": "books",
             # langRestrict は削除（日本語以外の本も検索可能にする）
         }
+        if debug:
+            st.info(f"🔍 Google Books API リクエスト中: {keyword}")
+        
         res = requests.get(
             GOOGLE_BOOKS_API_URL,
             params=params,
@@ -429,6 +436,8 @@ def fetch_book_info_google_books(keyword: str) -> Optional[Dict[str, Any]]:
         data = res.json()
         items = data.get("items") or []
         if not items:
+            if debug:
+                st.warning(f"⚠️ Google Books API: 「{keyword}」に該当する本が見つかりませんでした。")
             return None
 
         volume_info = (items[0] or {}).get("volumeInfo") or {}
@@ -442,7 +451,7 @@ def fetch_book_info_google_books(keyword: str) -> Optional[Dict[str, Any]]:
                 isbn_10 = (it or {}).get("identifier")
 
         image_links = volume_info.get("imageLinks") or {}
-        return {
+        result = {
             "title": volume_info.get("title"),
             "subtitle": volume_info.get("subtitle"),
             "authors": volume_info.get("authors") or [],
@@ -457,13 +466,26 @@ def fetch_book_info_google_books(keyword: str) -> Optional[Dict[str, Any]]:
             "isbn13": isbn_13,
             "isbn10": isbn_10,
         }
+        if debug:
+            st.success(f"✅ Google Books API: 本の情報を取得しました: {result.get('title', 'N/A')}")
+        return result
+    except requests.exceptions.Timeout as e:
+        error_msg = f"⏱️ Google Books API タイムアウト: {str(e)}"
+        print(error_msg)
+        if debug:
+            st.error(error_msg)
+        return None
     except requests.exceptions.RequestException as e:
-        # ネットワークエラーやタイムアウトなど
-        print(f"Google Books API リクエストエラー: {type(e).__name__}: {str(e)}")
+        error_msg = f"🌐 Google Books API リクエストエラー: {type(e).__name__}: {str(e)}"
+        print(error_msg)
+        if debug:
+            st.error(error_msg)
         return None
     except Exception as e:
-        # その他の予期しないエラー
-        print(f"Google Books API 予期しないエラー: {type(e).__name__}: {str(e)}")
+        error_msg = f"❌ Google Books API 予期しないエラー: {type(e).__name__}: {str(e)}"
+        print(error_msg)
+        if debug:
+            st.error(error_msg)
         return None
 
 
@@ -471,13 +493,13 @@ def render_book_summary_section(keyword: str) -> None:
     """
     検索結果の下に、本の概要（Google Booksから取得した説明文を5行程度で表示）を表示する
     """
-    book = fetch_book_info_google_books(keyword)
+    # デバッグモード: 環境変数またはセッションステートで有効化
+    import os
+    debug_mode = os.getenv("DEBUG_BOOK_API", "").lower() == "true" or st.session_state.get("debug_book_api", False)
+    
+    book = fetch_book_info_google_books(keyword, debug=debug_mode)
     if not book:
-        # 本が見つからない場合は何も表示しない
-        # デバッグ用: 環境変数でエラー表示を有効化できる
-        import os
-        if os.getenv("DEBUG_BOOK_API", "").lower() == "true":
-            st.warning(f"⚠️ Google Books API: 「{keyword}」に該当する本が見つかりませんでした。")
+        # 本が見つからない場合は何も表示しない（デバッグモードの場合は既にメッセージ表示済み）
         return
 
     title = book.get("title") or keyword
