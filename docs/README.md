@@ -46,8 +46,11 @@
 Book Research/
 ├── book_search_app/
 │   └── app.py          # メインアプリケーション
+├── docs/
+│   ├── README.md       # このファイル（開発ガイド）
+│   └── requirements.md # 要件定義書
 ├── requirements.txt     # 依存ライブラリ
-└── README.md            # ドキュメント
+└── runtime.txt         # ランタイム設定
 ```
 
 ## 注意事項
