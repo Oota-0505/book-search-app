@@ -423,16 +423,26 @@ def _fetch_book_info_google_books_internal(keyword: str, debug: bool = False) ->
             "printType": "books",
         }
         
+        url = f"{GOOGLE_BOOKS_API_URL}?{urllib.parse.urlencode(params)}"
+        if debug:
+            print(f"[DEBUG] Google Books API URL: {url}")
+        
         res = requests.get(
             GOOGLE_BOOKS_API_URL,
             params=params,
             headers=HEADERS,
             timeout=TIMEOUT_MEDIUM,
         )
+        
+        if debug:
+            print(f"[DEBUG] Response status: {res.status_code}")
+        
         res.raise_for_status()
         data = res.json()
         items = data.get("items") or []
         if not items:
+            if debug:
+                print(f"[DEBUG] No items found for keyword: {keyword}")
             return None
 
         volume_info = (items[0] or {}).get("volumeInfo") or {}
@@ -446,7 +456,7 @@ def _fetch_book_info_google_books_internal(keyword: str, debug: bool = False) ->
                 isbn_10 = (it or {}).get("identifier")
 
         image_links = volume_info.get("imageLinks") or {}
-        return {
+        result = {
             "title": volume_info.get("title"),
             "subtitle": volume_info.get("subtitle"),
             "authors": volume_info.get("authors") or [],
@@ -461,8 +471,18 @@ def _fetch_book_info_google_books_internal(keyword: str, debug: bool = False) ->
             "isbn13": isbn_13,
             "isbn10": isbn_10,
         }
-    except Exception:
-        return None
+        if debug:
+            print(f"[DEBUG] Successfully fetched book: {result.get('title', 'N/A')}")
+        return result
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] Google Books API RequestException: {type(e).__name__}: {str(e)}")
+        if debug:
+            print(f"[DEBUG] Request URL: {GOOGLE_BOOKS_API_URL}")
+            print(f"[DEBUG] Headers: {HEADERS}")
+        raise
+    except Exception as e:
+        print(f"[ERROR] Google Books API Unexpected error: {type(e).__name__}: {str(e)}")
+        raise
 
 
 # キャッシュキーにバージョンを含めて、エラー時のキャッシュを回避
