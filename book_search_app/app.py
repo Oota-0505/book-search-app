@@ -465,8 +465,12 @@ def _fetch_book_info_google_books_internal(keyword: str, debug: bool = False) ->
         return None
 
 
+# キャッシュキーにバージョンを含めて、エラー時のキャッシュを回避
+# バージョンを変更するとキャッシュが無効化される
+_CACHE_VERSION = "v3"
+
 @st.cache_data(ttl=60 * 60 * 24, show_spinner=False, max_entries=100)
-def fetch_book_info_google_books(keyword: str, debug: bool = False, retry_count: int = 0) -> Optional[Dict[str, Any]]:
+def fetch_book_info_google_books(keyword: str, debug: bool = False, cache_version: str = _CACHE_VERSION) -> Optional[Dict[str, Any]]:
     """
     Google Books APIからキーワードに最も近い1冊の書誌情報を取得する（無料枠あり）
     リトライロジック付き（最大3回まで再試行）
@@ -474,11 +478,11 @@ def fetch_book_info_google_books(keyword: str, debug: bool = False, retry_count:
     Args:
         keyword: 検索キーワード
         debug: デバッグモード（エラーを画面に表示）
-        retry_count: リトライ回数（内部使用）
+        cache_version: キャッシュバージョン（キャッシュ無効化用）
     """
     max_retries = 3
     
-    if debug and retry_count == 0:
+    if debug:
         st.info(f"🔍 Google Books API リクエスト中: {keyword}")
     
     for attempt in range(max_retries):
@@ -538,9 +542,20 @@ def render_book_summary_section(keyword: str) -> None:
     import os
     debug_mode = os.getenv("DEBUG_BOOK_API", "").lower() == "true" or st.session_state.get("debug_book_api", False)
     
-    book = fetch_book_info_google_books(keyword, debug=debug_mode)
+    # キャッシュを無効化するオプション（エラー時に再試行するため）
+    cache_clear_key = st.session_state.get("cache_clear_key", "default")
+    
+    try:
+        book = fetch_book_info_google_books(keyword, debug=debug_mode, cache_version=f"{_CACHE_VERSION}_{cache_clear_key}")
+    except Exception as e:
+        if debug_mode:
+            st.error(f"❌ Google Books API エラー: {str(e)}")
+        book = None
+    
     if not book:
         # 本が見つからない場合は何も表示しない（デバッグモードの場合は既にメッセージ表示済み）
+        # ただし、Streamlit Cloudでエラーが発生している可能性があるため、
+        # デバッグモードが有効な場合はエラーメッセージを表示
         return
 
     title = book.get("title") or keyword
