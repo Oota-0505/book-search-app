@@ -6,6 +6,7 @@ Streamlitアプリケーション
 """
 
 import re
+import time
 import urllib.parse
 from typing import Any, Dict, Optional, Tuple
 import requests
@@ -20,8 +21,12 @@ from bs4 import BeautifulSoup
 st.set_page_config(page_title="本検索アプリ", layout="wide", page_icon="📚")
 
 # HTTP設定
-USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-HEADERS = {"User-Agent": USER_AGENT}
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "application/json",
+    "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+}
 TIMEOUT_SHORT = 10
 TIMEOUT_MEDIUM = 20  # Google Books API用に延長
 
@@ -407,24 +412,16 @@ def add_to_history(keyword: str) -> None:
         st.session_state.search_history = st.session_state.search_history[:HISTORY_LIMIT]
 
 
-@st.cache_data(ttl=60 * 60 * 24, show_spinner=False, max_entries=100)
-def fetch_book_info_google_books(keyword: str, debug: bool = False) -> Optional[Dict[str, Any]]:
+def _fetch_book_info_google_books_internal(keyword: str, debug: bool = False) -> Optional[Dict[str, Any]]:
     """
-    Google Books APIからキーワードに最も近い1冊の書誌情報を取得する（無料枠あり）
-    
-    Args:
-        keyword: 検索キーワード
-        debug: デバッグモード（エラーを画面に表示）
+    Google Books APIからキーワードに最も近い1冊の書誌情報を取得する（内部関数、リトライなし）
     """
     try:
         params = {
             "q": keyword,
             "maxResults": 1,
             "printType": "books",
-            # langRestrict は削除（日本語以外の本も検索可能にする）
         }
-        if debug:
-            st.info(f"🔍 Google Books API リクエスト中: {keyword}")
         
         res = requests.get(
             GOOGLE_BOOKS_API_URL,
@@ -436,8 +433,6 @@ def fetch_book_info_google_books(keyword: str, debug: bool = False) -> Optional[
         data = res.json()
         items = data.get("items") or []
         if not items:
-            if debug:
-                st.warning(f"⚠️ Google Books API: 「{keyword}」に該当する本が見つかりませんでした。")
             return None
 
         volume_info = (items[0] or {}).get("volumeInfo") or {}
@@ -451,7 +446,7 @@ def fetch_book_info_google_books(keyword: str, debug: bool = False) -> Optional[
                 isbn_10 = (it or {}).get("identifier")
 
         image_links = volume_info.get("imageLinks") or {}
-        result = {
+        return {
             "title": volume_info.get("title"),
             "subtitle": volume_info.get("subtitle"),
             "authors": volume_info.get("authors") or [],
@@ -466,27 +461,73 @@ def fetch_book_info_google_books(keyword: str, debug: bool = False) -> Optional[
             "isbn13": isbn_13,
             "isbn10": isbn_10,
         }
-        if debug:
-            st.success(f"✅ Google Books API: 本の情報を取得しました: {result.get('title', 'N/A')}")
-        return result
-    except requests.exceptions.Timeout as e:
-        error_msg = f"⏱️ Google Books API タイムアウト: {str(e)}"
-        print(error_msg)
-        if debug:
-            st.error(error_msg)
+    except Exception:
         return None
-    except requests.exceptions.RequestException as e:
-        error_msg = f"🌐 Google Books API リクエストエラー: {type(e).__name__}: {str(e)}"
-        print(error_msg)
-        if debug:
-            st.error(error_msg)
-        return None
-    except Exception as e:
-        error_msg = f"❌ Google Books API 予期しないエラー: {type(e).__name__}: {str(e)}"
-        print(error_msg)
-        if debug:
-            st.error(error_msg)
-        return None
+
+
+@st.cache_data(ttl=60 * 60 * 24, show_spinner=False, max_entries=100)
+def fetch_book_info_google_books(keyword: str, debug: bool = False, retry_count: int = 0) -> Optional[Dict[str, Any]]:
+    """
+    Google Books APIからキーワードに最も近い1冊の書誌情報を取得する（無料枠あり）
+    リトライロジック付き（最大3回まで再試行）
+    
+    Args:
+        keyword: 検索キーワード
+        debug: デバッグモード（エラーを画面に表示）
+        retry_count: リトライ回数（内部使用）
+    """
+    max_retries = 3
+    
+    if debug and retry_count == 0:
+        st.info(f"🔍 Google Books API リクエスト中: {keyword}")
+    
+    for attempt in range(max_retries):
+        try:
+            result = _fetch_book_info_google_books_internal(keyword, debug=debug)
+            if result:
+                if debug:
+                    st.success(f"✅ Google Books API: 本の情報を取得しました: {result.get('title', 'N/A')}")
+                return result
+            else:
+                # 本が見つからない場合
+                if debug and attempt == max_retries - 1:
+                    st.warning(f"⚠️ Google Books API: 「{keyword}」に該当する本が見つかりませんでした。")
+                return None
+        except requests.exceptions.Timeout as e:
+            if attempt < max_retries - 1:
+                if debug:
+                    st.info(f"⏱️ タイムアウト（試行 {attempt + 1}/{max_retries}）、再試行します...")
+                time.sleep(1)  # 1秒待機してから再試行
+                continue
+            error_msg = f"⏱️ Google Books API タイムアウト（{max_retries}回試行）: {str(e)}"
+            print(error_msg)
+            if debug:
+                st.error(error_msg)
+            return None
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:
+                if debug:
+                    st.info(f"🌐 リクエストエラー（試行 {attempt + 1}/{max_retries}）、再試行します...")
+                time.sleep(1)  # 1秒待機してから再試行
+                continue
+            error_msg = f"🌐 Google Books API リクエストエラー（{max_retries}回試行）: {type(e).__name__}: {str(e)}"
+            print(error_msg)
+            if debug:
+                st.error(error_msg)
+            return None
+        except Exception as e:
+            if attempt < max_retries - 1:
+                if debug:
+                    st.info(f"❌ エラー（試行 {attempt + 1}/{max_retries}）、再試行します...")
+                time.sleep(1)  # 1秒待機してから再試行
+                continue
+            error_msg = f"❌ Google Books API 予期しないエラー（{max_retries}回試行）: {type(e).__name__}: {str(e)}"
+            print(error_msg)
+            if debug:
+                st.error(error_msg)
+            return None
+    
+    return None
 
 
 def render_book_summary_section(keyword: str) -> None:
