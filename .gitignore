@@ -9,7 +9,9 @@ venv/
 .venv
 
 # Streamlit
-.streamlit/
+# .streamlit/config.toml はコミットする（デプロイ設定のため）
+.streamlit/secrets.toml
+.streamlit/credentials.toml
 
 # IDE
 .vscode/
