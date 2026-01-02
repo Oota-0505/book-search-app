@@ -423,15 +423,20 @@ def _fetch_book_info_google_books_internal(keyword: str, debug: bool = False) ->
             "maxResults": 1,
             "printType": "books",
         }
-        
+
         url = f"{GOOGLE_BOOKS_API_URL}?{urllib.parse.urlencode(params)}"
         if debug:
             print(f"[DEBUG] Google Books API URL: {url}")
-        
-        res = requests.get(
+
+        # Google Books が組織プロキシで遮断される環境があるため、
+        # セッションで trust_env をオフにしてプロキシ設定を無効化
+        session = requests.Session()
+        session.trust_env = False
+        session.headers.update(HEADERS)
+
+        res = session.get(
             GOOGLE_BOOKS_API_URL,
             params=params,
-            headers=HEADERS,
             timeout=TIMEOUT_MEDIUM,
         )
         
@@ -572,7 +577,19 @@ def render_book_summary_section(keyword: str) -> None:
     if not book:
         # 本が見つからない場合は何も表示しない（デバッグモードの場合は既にメッセージ表示済み）
         # ただし、Streamlit Cloudでエラーが発生している可能性があるため、
-        # デバッグモードが有効な場合はエラーメッセージを表示
+        # ユーザー向けにフォールバックメッセージを表示
+        fallback_link = f"https://www.google.com/search?tbm=bks&q={urllib.parse.quote(keyword)}"
+        st.info(
+            """
+            📖 Google Books の情報を取得できませんでした。
+            ネットワーク制限で外部APIにアクセスできない可能性があります。
+            下のリンクからキーワードで直接検索できます。
+            """
+        )
+        st.markdown(
+            f"[Google Books で「{keyword}」を検索 ↗]({fallback_link})",
+            unsafe_allow_html=True,
+        )
         return
 
     title = book.get("title") or keyword
