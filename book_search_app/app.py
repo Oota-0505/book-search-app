@@ -493,7 +493,7 @@ def _fetch_book_info_google_books_internal(keyword: str, debug: bool = False) ->
 
 # キャッシュキーにバージョンを含めて、エラー時のキャッシュを回避
 # バージョンを変更するとキャッシュが無効化される
-_CACHE_VERSION = "v3"
+_CACHE_VERSION = "v4"  # Streamlit Cloud対応のため更新
 
 @st.cache_data(ttl=60 * 60 * 24, show_spinner=False, max_entries=100)
 def fetch_book_info_google_books(keyword: str, debug: bool = False, cache_version: str = _CACHE_VERSION) -> Optional[Dict[str, Any]]:
@@ -564,32 +564,54 @@ def render_book_summary_section(keyword: str) -> None:
     """
     検索結果の下に、本の概要（Google Booksから取得した説明文を5行程度で表示）を表示する
     """
-    # デバッグモード: 環境変数またはセッションステートで有効化
-    debug_mode = os.getenv("DEBUG_BOOK_API", "").lower() == "true" or st.session_state.get("debug_book_api", False)
+    # デバッグモード: 環境変数、セッションステート、またはStreamlit Cloud環境で有効化
+    # Streamlit Cloud環境の検出（複数の環境変数で判定）
+    is_streamlit_cloud = (
+        os.getenv("STREAMLIT_SERVER_PORT") is not None or
+        os.getenv("STREAMLIT_SHARING_MODE") is not None or
+        os.getenv("HOME") == "/home/appuser" or
+        "streamlit.app" in os.getenv("_", "")
+    )
+    debug_mode = os.getenv("DEBUG_BOOK_API", "").lower() == "true" or st.session_state.get("debug_book_api", False) or is_streamlit_cloud
     
     try:
         book = fetch_book_info_google_books(keyword, debug=debug_mode, cache_version=_CACHE_VERSION)
     except Exception as e:
-        if debug_mode:
-            st.error(f"❌ Google Books API エラー: {str(e)}")
+        # Streamlit Cloud環境では常にエラーを表示
+        error_msg = f"❌ Google Books API エラー: {type(e).__name__}: {str(e)}"
+        if debug_mode or is_streamlit_cloud:
+            st.error(error_msg)
+            # 詳細なエラー情報も表示
+            import traceback
+            st.code(traceback.format_exc(), language="python")
+        print(f"[ERROR] {error_msg}")
         book = None
     
     if not book:
-        # 本が見つからない場合は何も表示しない（デバッグモードの場合は既にメッセージ表示済み）
-        # ただし、Streamlit Cloudでエラーが発生している可能性があるため、
-        # ユーザー向けにフォールバックメッセージを表示
-        fallback_link = f"https://www.google.com/search?tbm=bks&q={urllib.parse.quote(keyword)}"
-        st.info(
-            """
-            📖 Google Books の情報を取得できませんでした。
-            ネットワーク制限で外部APIにアクセスできない可能性があります。
-            下のリンクからキーワードで直接検索できます。
-            """
+        # 本が見つからない場合の処理
+        # Streamlit Cloud環境では、エラーの詳細を表示済みのため、簡潔なメッセージのみ
+        is_streamlit_cloud = (
+            os.getenv("STREAMLIT_SERVER_PORT") is not None or
+            os.getenv("STREAMLIT_SHARING_MODE") is not None or
+            os.getenv("HOME") == "/home/appuser" or
+            "streamlit.app" in os.getenv("_", "")
         )
-        st.markdown(
-            f"[Google Books で「{keyword}」を検索 ↗]({fallback_link})",
-            unsafe_allow_html=True,
-        )
+        
+        if not is_streamlit_cloud:
+            # ローカル環境ではフォールバックメッセージを表示
+            fallback_link = f"https://www.google.com/search?tbm=bks&q={urllib.parse.quote(keyword)}"
+            st.info(
+                """
+                📖 Google Books の情報を取得できませんでした。
+                ネットワーク制限で外部APIにアクセスできない可能性があります。
+                下のリンクからキーワードで直接検索できます。
+                """
+            )
+            st.markdown(
+                f"[Google Books で「{keyword}」を検索 ↗]({fallback_link})",
+                unsafe_allow_html=True,
+            )
+        # Streamlit Cloud環境では、既にエラーメッセージが表示されているため、何も表示しない
         return
 
     title = book.get("title") or keyword
