@@ -10,6 +10,7 @@ import re
 import time
 import urllib.parse
 from typing import Any, Dict, Optional, Tuple
+import xml.etree.ElementTree as ET
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
@@ -37,6 +38,8 @@ KUSA_BOOKS_KEYWORD = "各務原店"
 
 # 外部API（書誌情報）
 GOOGLE_BOOKS_API_URL = "https://www.googleapis.com/books/v1/volumes"
+NDL_API_URL = "https://ndlsearch.ndl.go.jp/api/opensearch"
+OPENBD_API_URL = "https://api.openbd.jp/v1/get"
 
 # 型定義
 Status = Dict[str, str]
@@ -413,6 +416,114 @@ def add_to_history(keyword: str) -> None:
         st.session_state.search_history = st.session_state.search_history[:HISTORY_LIMIT]
 
 
+def fetch_book_info_openbd(isbn: str) -> Optional[Dict[str, Any]]:
+    """
+    OpenBD APIからISBNで書誌情報を取得する
+    """
+    try:
+        params = {"isbn": isbn}
+        res = requests.get(OPENBD_API_URL, params=params, timeout=TIMEOUT_SHORT)
+        res.raise_for_status()
+        data = res.json()
+        if not data or not data[0]:
+            return None
+        
+        item = data[0]
+        summary = item.get("summary", {})
+        onix = item.get("onix", {})
+        
+        # タイトル・著者など
+        title = summary.get("title", "")
+        authors = summary.get("author", "")
+        publisher = summary.get("publisher", "")
+        pubdate = summary.get("pubdate", "")
+        cover = summary.get("cover", "")
+        description = (onix.get("CollateralDetail", {})
+                           .get("TextContent", [{}])[0]
+                           .get("Text", ""))
+        
+        return {
+            "title": title,
+            "subtitle": "",
+            "authors": [authors] if authors else [],
+            "publisher": publisher,
+            "publishedDate": pubdate,
+            "description": description,
+            "categories": [],
+            "pageCount": None,
+            "language": "ja",
+            "thumbnail": cover,
+            "infoLink": f"https://www.google.com/search?q={isbn}",
+            "isbn13": isbn,
+            "isbn10": None,
+        }
+    except Exception:
+        return None
+
+
+def fetch_book_info_ndl(keyword: str, debug: bool = False) -> Optional[Dict[str, Any]]:
+    """
+    国立国会図書館サーチAPIからキーワード検索し、OpenBDで詳細を取得するフォールバック
+    """
+    try:
+        # まずタイトル検索を試す
+        encoded_kw = urllib.parse.quote(keyword)
+        url = f"{NDL_API_URL}?cnt=5&dvc=api&title={encoded_kw}"
+        
+        if debug:
+            print(f"[DEBUG] NDL API Request (Title): {url}")
+            
+        res = requests.get(url, timeout=TIMEOUT_MEDIUM)
+        
+        # ヒット数が0またはエラーなら汎用検索 (qry)
+        # totalResultsを確認するのが確実だが、簡易的に item タグの有無で判断
+        if res.status_code != 200 or "<item>" not in res.text:
+             url = f"{NDL_API_URL}?cnt=5&dvc=api&qry={encoded_kw}"
+             if debug:
+                print(f"[DEBUG] NDL API Request (Query): {url}")
+             res = requests.get(url, timeout=TIMEOUT_MEDIUM)
+             
+        if res.status_code != 200:
+            return None
+            
+        # XML解析
+        root = ET.fromstring(res.text)
+        ns = {'dc': 'http://purl.org/dc/elements/1.1/'}
+        xsi_ns = "http://www.w3.org/2001/XMLSchema-instance"
+        
+        # itemを走査
+        for item in root.findall('.//item'):
+            isbn = None
+            # dc:identifierタグを探す
+            for identifier in item.findall('.//dc:identifier', ns):
+                # xsi:type="dcndl:ISBN" をチェック
+                type_attr = identifier.get(f"{{{xsi_ns}}}type")
+                val = identifier.text or ""
+                val_clean = val.replace('-', '')
+                
+                if type_attr == "dcndl:ISBN":
+                    isbn = val_clean
+                    break
+                # 属性がない場合でも、桁数でISBN判定
+                if val_clean.isdigit() and (len(val_clean) == 10 or len(val_clean) == 13):
+                    isbn = val_clean
+                    break
+            
+            if isbn:
+                if debug:
+                    print(f"[DEBUG] Found ISBN from NDL: {isbn}")
+                # OpenBDで詳細取得
+                book_info = fetch_book_info_openbd(isbn)
+                if book_info:
+                    return book_info
+                    
+        return None
+    except Exception as e:
+        if debug:
+            print(f"[ERROR] NDL/OpenBD Error: {e}")
+        return None
+
+
 def _fetch_book_info_google_books_internal(keyword: str, debug: bool = False) -> Optional[Dict[str, Any]]:
     """
     Google Books APIからキーワードに最も近い1冊の書誌情報を取得する（内部関数、リトライなし）
@@ -423,6 +534,23 @@ def _fetch_book_info_google_books_internal(keyword: str, debug: bool = False) ->
             "maxResults": 1,
             "printType": "books",
         }
+        
+        # API Keyの確認 (Streamlit Secrets または 環境変数)
+        api_key = None
+        # st.secretsへのアクセスは例外が発生する可能性があるため安全に行う
+        try:
+            if hasattr(st, "secrets") and "GOOGLE_BOOKS_API_KEY" in st.secrets:
+                api_key = st.secrets["GOOGLE_BOOKS_API_KEY"]
+        except Exception:
+            pass
+            
+        if not api_key and "GOOGLE_BOOKS_API_KEY" in os.environ:
+            api_key = os.environ["GOOGLE_BOOKS_API_KEY"]
+            
+        if api_key:
+            params["key"] = api_key
+            if debug:
+                print("[DEBUG] Using Google Books API Key")
         
         url = f"{GOOGLE_BOOKS_API_URL}?{urllib.parse.urlencode(params)}"
         if debug:
@@ -442,6 +570,9 @@ def _fetch_book_info_google_books_internal(keyword: str, debug: bool = False) ->
         
         if debug:
             print(f"[DEBUG] Response status: {res.status_code}")
+            if res.status_code == 403:
+                print(f"[DEBUG] Response headers: {dict(res.headers)}")
+                print(f"[DEBUG] Response text (first 500 chars): {res.text[:500]}")
         
         res.raise_for_status()
         data = res.json()
@@ -519,9 +650,16 @@ def fetch_book_info_google_books(keyword: str, debug: bool = False, cache_versio
                     st.success(f"✅ Google Books API: 本の情報を取得しました: {result.get('title', 'N/A')}")
                 return result
             else:
-                # 本が見つからない場合
-                if debug and attempt == max_retries - 1:
-                    st.warning(f"⚠️ Google Books API: 「{keyword}」に該当する本が見つかりませんでした。")
+                # 本が見つからない場合、NDLフォールバックを試す
+                if attempt == max_retries - 1:
+                    if debug:
+                         st.info("ℹ️ Google Booksで見つからないため、国立国会図書館サーチを試行します...")
+                    fallback = fetch_book_info_ndl(keyword, debug)
+                    if fallback:
+                        return fallback
+                    
+                    if debug:
+                        st.warning(f"⚠️ Google Books API: 「{keyword}」に該当する本が見つかりませんでした。")
                 return None
         except requests.exceptions.Timeout as e:
             if attempt < max_retries - 1:
@@ -535,11 +673,36 @@ def fetch_book_info_google_books(keyword: str, debug: bool = False, cache_versio
                 st.error(error_msg)
             return None
         except requests.exceptions.RequestException as e:
+            # 403 Forbidden / 429 Too Many Requests の場合は待機してから再試行
+            status_code = getattr(e.response, 'status_code', None)
+            if status_code in [403, 429]:
+                if attempt < max_retries - 1:
+                    # レート制限の場合は待機時間を長めに（指数バックオフ）
+                    wait_time = (2 ** attempt) * 2  # 2秒、4秒、8秒...
+                    print(f"[WARN] Google Books API レート制限 ({status_code})。{wait_time}秒待機して再試行します...")
+                    if debug:
+                        st.info(f"⏳ Google Books API レート制限 ({status_code})。{wait_time}秒待機して再試行します...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # 最終試行でもダメならフォールバック
+                    print(f"[WARN] Google Books API 403/429 Error (最終試行): {e}. Switching to NDL fallback.")
+                    if debug:
+                        st.warning(f"⚠️ Google Books API 制限発生 ({status_code})。国立国会図書館サーチで再試行します...")
+                    return fetch_book_info_ndl(keyword, debug=debug)
+
             if attempt < max_retries - 1:
                 if debug:
                     st.info(f"🌐 リクエストエラー（試行 {attempt + 1}/{max_retries}）、再試行します...")
                 time.sleep(1)  # 1秒待機してから再試行
                 continue
+            
+            # 最終試行でもダメならフォールバックを試す
+            print(f"[INFO] Trying NDL fallback after error: {e}")
+            fallback = fetch_book_info_ndl(keyword, debug=debug)
+            if fallback:
+                return fallback
+
             error_msg = f"🌐 Google Books API リクエストエラー（{max_retries}回試行）: {type(e).__name__}: {str(e)}"
             print(error_msg)
             if debug:
