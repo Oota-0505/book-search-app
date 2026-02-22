@@ -344,8 +344,9 @@ def _build_app_css(bg_base64: str) -> str:
     }}
     .hero-icon {{
         flex-shrink: 0;
-        width: 56px;
-        height: 56px;
+        width: 72px;
+        height: 72px;
+        overflow: visible;
     }}
 
     /* メインタイトル */
@@ -1277,12 +1278,12 @@ def main() -> None:
         """
         <div class="hero-section">
             <div class="hero-heading">
-                <svg class="hero-icon" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <svg class="hero-icon" viewBox="-4 -4 72 72" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="overflow:visible">
                     <defs>
-                        <filter id="hero-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                        <filter id="hero-shadow" x="-30%" y="-30%" width="160%" height="160%">
                             <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.3"/>
                         </filter>
-                        <filter id="hero-glass" x="-20%" y="-20%" width="140%" height="140%">
+                        <filter id="hero-glass" x="-30%" y="-30%" width="160%" height="160%">
                             <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.3"/>
                         </filter>
                     </defs>
@@ -1294,8 +1295,11 @@ def main() -> None:
                         <path d="M 56 16 Q 44 10 32 20 L 32 54 Q 44 44 56 50 Z" fill="#fff" stroke="#cbd5e1" stroke-width="1.5" stroke-linejoin="round"/>
                         <line x1="32" y1="20" x2="32" y2="54" stroke="#cbd5e1" stroke-width="1.5" stroke-linecap="round"/>
                         <path d="M 32 20 L 35 32 L 32 35 L 29 32 Z" fill="#ef4444" stroke="#b91c1c" stroke-width="1" stroke-linejoin="round"/>
+                        <path fill="#fff" stroke="#cbd5e1" stroke-width="1.5" stroke-linejoin="round">
+                            <animate attributeName="d" dur="2s" repeatCount="indefinite" keyTimes="0;0.2;0.4;0.6;0.8;1" values="M 32 20 Q 44 10 56 16 L 56 50 Q 44 44 32 54 Z;M 32 20 Q 40 6 46 10 L 46 44 Q 40 38 32 54 Z;M 32 20 Q 32 4 32 6 L 32 40 Q 32 36 32 54 Z;M 32 20 Q 24 6 18 10 L 18 44 Q 24 38 32 54 Z;M 32 20 Q 20 10 8 16 L 8 50 Q 20 44 32 54 Z;M 32 20 Q 44 10 56 16 L 56 50 Q 44 44 32 54 Z"/>
+                            <animate attributeName="opacity" dur="2s" repeatCount="indefinite" keyTimes="0;0.8;0.85;0.95;1" values="1;1;0;0;1"/>
+                        </path>
                     </g>
-                    <!-- 虫眼鏡: レンズが右上、柄が左下に向く -->
                     <g filter="url(#hero-glass)" transform="translate(18, 6)">
                         <line x1="14" y1="38" x2="38" y2="14" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
                         <circle cx="42" cy="12" r="8" fill="none" stroke="#fff" stroke-width="5.5"/>
