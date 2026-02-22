@@ -214,7 +214,7 @@ CARD_BG_PATHS: Dict[str, Path] = {
 # __file__ = このスクリプトの絶対パス（book_search_app/app.py）
 # .parent   = book_search_app/
 # .parent   = リポジトリルート（Book Research/）
-_BG_IMAGE_PATH: Path = Path(__file__).parent.parent / "tpc-thi-action-198-main.jpg"
+_BG_IMAGE_PATH: Path = Path(__file__).parent.parent / "代官山蔦屋書店.jpg"
 
 
 # ============================================================================
@@ -384,6 +384,36 @@ def _build_app_css(bg_base64: str) -> str:
         color: var(--text-muted);
         margin: 0;
         letter-spacing: 0.06em;
+    }}
+
+    /* ── マイページリンク（検索ボックスの上）──────────────────────── */
+    .mypage-links {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        margin-bottom: 1.5rem;
+    }}
+    .mypage-link {{
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.08);
+        color: #F5F0E8;
+        font-size: 0.9rem;
+        font-weight: 600;
+        text-decoration: none;
+        backdrop-filter: blur(8px);
+        transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    }}
+    .mypage-link:hover {{
+        background: rgba(200, 147, 62, 0.18);
+        border-color: rgba(200, 147, 62, 0.45);
+        color: #FFFFFF;
+        transform: translateY(-1px);
     }}
 
     /* ── セクション見出し ───────────────────────────────────────── */
@@ -1265,6 +1295,23 @@ def main() -> None:
             <div class="hero-eyebrow">メディコス · ミライブ · 岐阜駅本屋 · 各務原BC</div>
             <h1 class="hero-title">Book Finder</h1>
             <p class="hero-sub">岐阜の本を、ひとまとめに。</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ── マイページリンク（メディコス・ミライブのログインへ）────────────────
+    st.markdown(
+        """
+        <div class="mypage-links">
+            <a href="https://www1.gifu-lib.jp/winj/opac/login.do?lang=ja&dispatch=/opac/mylibrary.do&every=1"
+               target="_blank" rel="noopener noreferrer" class="mypage-link">
+                🏢 メディコス マイページ
+            </a>
+            <a href="https://www.kani-lib.jp"
+               target="_blank" rel="noopener noreferrer" class="mypage-link">
+                🌲 ミライブ マイページ
+            </a>
         </div>
         """,
         unsafe_allow_html=True,
