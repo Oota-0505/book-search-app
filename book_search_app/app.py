@@ -210,11 +210,9 @@ CARD_BG_PATHS: Dict[str, Path] = {
     "tsutaya":  Path(__file__).parent.parent / "各務原BC.jpg",
 }
 
-# ── 背景画像のパス ──────────────────────────────────────────────────────────
-# トップ画面 = 松本十畳、検索結果表示時 = 代官山蔦屋書店に切り替える
+# ── 背景画像のパス（松本十畳のみ）────────────────────────────────────────────
 _REPO_ROOT: Path = Path(__file__).parent.parent
-_TOP_BG_IMAGE_PATH: Path = _REPO_ROOT / "松本十畳.jpg"
-_RESULTS_BG_IMAGE_PATH: Path = _REPO_ROOT / "代官山蔦屋書店.jpg"
+_BG_IMAGE_PATH: Path = _REPO_ROOT / "松本十畳.jpg"
 
 
 # ============================================================================
@@ -222,24 +220,13 @@ _RESULTS_BG_IMAGE_PATH: Path = _REPO_ROOT / "代官山蔦屋書店.jpg"
 # ============================================================================
 
 @st.cache_resource
-def _load_top_bg_base64() -> str:
-    """トップ画面用背景画像（松本十畳）を base64 で返す。"""
+def _load_bg_base64() -> str:
+    """背景画像（松本十畳）を base64 で返す。"""
     try:
-        with open(_TOP_BG_IMAGE_PATH, "rb") as f:
+        with open(_BG_IMAGE_PATH, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
     except FileNotFoundError:
-        logger.warning("トップ背景画像が見つかりません: %s", _TOP_BG_IMAGE_PATH)
-        return ""
-
-
-@st.cache_resource
-def _load_results_bg_base64() -> str:
-    """検索結果表示用背景画像（代官山蔦屋書店）を base64 で返す。"""
-    try:
-        with open(_RESULTS_BG_IMAGE_PATH, "rb") as f:
-            return base64.b64encode(f.read()).decode("utf-8")
-    except FileNotFoundError:
-        logger.warning("検索結果用背景画像が見つかりません: %s", _RESULTS_BG_IMAGE_PATH)
+        logger.warning("背景画像が見つかりません: %s", _BG_IMAGE_PATH)
         return ""
 
 
@@ -304,32 +291,31 @@ def _build_app_css(bg_base64: str) -> str:
 <style>
     /* ── カラートークン ─────────────────────────────────────────── */
     :root {{
-        --text:        #F5F0E8;
-        --text-muted:  rgba(245, 240, 232, 0.60);
-        --border:      rgba(255, 255, 255, 0.12);
-        --shadow:      0 12px 32px rgba(0, 0, 0, 0.40);
-        --shadow-hover:0 22px 52px rgba(0, 0, 0, 0.55);
-        --gold:        #C8933E;
-        --gold-glow:   rgba(200, 147, 62, 0.30);
-        --ok:          #34D399;
-        --ng:          #F87171;
-        --warn:        #FBBF24;
-        --blue0:       #60A5FA;
-        --blue1:       #3B82F6;
-        --green0:      #34D399;
-        --green1:      #059669;
+        --text:        #2C2416;
+        --text-muted:  rgba(44, 36, 22, 0.72);
+        --border:      rgba(44, 36, 22, 0.12);
+        --shadow:      0 12px 32px rgba(0, 0, 0, 0.12);
+        --shadow-hover:0 22px 52px rgba(0, 0, 0, 0.18);
+        --gold:        #B8860B;
+        --gold-glow:   rgba(184, 134, 11, 0.22);
+        --ok:          #1a7f4a;
+        --ng:          #c53030;
+        --warn:        #b45309;
+        --blue0:       #2563EB;
+        --blue1:       #1d4ed8;
+        --green0:      #16a34a;
+        --green1:      #15803d;
     }}
 
     /* ── アプリ全体 ──────────────────────────────────────────────── */
-    /* dark overlay + 背景画像の 2 層構造。
-       linear-gradient を前に置くことで画像の上に半透明の暗幕を重ねる。  */
+    /* 明るいオーバーレイで松本十畳の写真を際立たせる */
     .stApp {{
         background-image:
             linear-gradient(
                 180deg,
-                rgba(6,  4, 18, 0.76) 0%,
-                rgba(10, 7, 28, 0.65) 40%,
-                rgba(14,10, 35, 0.80) 100%
+                rgba(255, 252, 248, 0.18) 0%,
+                rgba(255, 250, 242, 0.28) 40%,
+                rgba(255, 248, 238, 0.42) 100%
             ),
             {bg_layer};
         background-size: cover;
@@ -355,10 +341,10 @@ def _build_app_css(bg_base64: str) -> str:
         font-size: clamp(3rem, 7vw, 5.5rem);
         font-weight: 900;
         letter-spacing: -0.035em;
-        color: #FFFFFF;
+        color: var(--text);
         line-height: 1.06;
         margin: 0 0 1.2rem;
-        text-shadow: 0 4px 32px rgba(0, 0, 0, 0.7);
+        text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
         font-family: ui-sans-serif, system-ui, -apple-system,
                      "Segoe UI", "Helvetica Neue", Arial;
     }}
@@ -385,9 +371,9 @@ def _build_app_css(bg_base64: str) -> str:
         gap: 6px;
         padding: 0.5rem 1rem;
         border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        background: rgba(255, 255, 255, 0.08);
-        color: #F5F0E8;
+        border: 1px solid rgba(44, 36, 22, 0.2);
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--text);
         font-size: 0.9rem;
         font-weight: 600;
         text-decoration: none;
@@ -395,35 +381,34 @@ def _build_app_css(bg_base64: str) -> str:
         transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
     }}
     .mypage-link:hover {{
-        background: rgba(200, 147, 62, 0.18);
-        border-color: rgba(200, 147, 62, 0.45);
-        color: #FFFFFF;
+        background: rgba(255, 250, 242, 0.95);
+        border-color: var(--gold);
+        color: var(--text);
         transform: translateY(-1px);
     }}
 
     /* ── セクション見出し ───────────────────────────────────────── */
-    h2, h3 {{ color: #FFFFFF !important; letter-spacing: -0.015em; }}
+    h2, h3 {{ color: var(--text) !important; letter-spacing: -0.015em; }}
 
     /* ── テキスト入力（検索バー）────────────────────────────────── */
     div[data-testid="stTextInput"] input {{
-        background: rgba(255, 255, 255, 0.08) !important;
-        border: 1px solid rgba(255, 255, 255, 0.20) !important;
+        background: rgba(255, 255, 255, 0.88) !important;
+        border: 1px solid rgba(44, 36, 22, 0.18) !important;
         border-radius: 14px !important;
         padding: 0.90rem 1.10rem !important;
-        color: #FFFFFF !important;
+        color: var(--text) !important;
         font-size: 1rem !important;
         backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
         transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
     }}
     div[data-testid="stTextInput"] input::placeholder {{
-        color: rgba(255, 255, 255, 0.38) !important;
+        color: var(--text-muted) !important;
     }}
     div[data-testid="stTextInput"] input:focus {{
         border-color: var(--gold) !important;
-        background: rgba(255, 255, 255, 0.12) !important;
-        box-shadow: 0 0 0 3px var(--gold-glow), 0 4px 16px rgba(0,0,0,0.3) !important;
+        background: rgba(255, 255, 255, 0.95) !important;
+        box-shadow: 0 0 0 3px var(--gold-glow), 0 4px 16px rgba(0,0,0,0.1) !important;
     }}
     div[data-testid="stTextInput"] label {{
         color: var(--text-muted) !important;
@@ -454,8 +439,8 @@ def _build_app_css(bg_base64: str) -> str:
     button[data-testid="stBaseButton-secondary"] {{
         width: 100%;
         border-radius: 999px !important;
-        border: 1px solid rgba(255, 255, 255, 0.16) !important;
-        background: rgba(255, 255, 255, 0.07) !important;
+        border: 1px solid rgba(44, 36, 22, 0.2) !important;
+        background: rgba(255, 255, 255, 0.75) !important;
         color: var(--text) !important;
         font-weight: 600 !important;
         padding: 0.45rem 0.65rem !important;
@@ -463,8 +448,8 @@ def _build_app_css(bg_base64: str) -> str:
         transition: background 0.15s ease, transform 0.15s ease !important;
     }}
     button[data-testid="stBaseButton-secondary"]:hover {{
-        background: rgba(200, 147, 62, 0.15) !important;
-        border-color: rgba(200, 147, 62, 0.40) !important;
+        background: rgba(255, 248, 240, 0.95) !important;
+        border-color: var(--gold) !important;
         transform: translateY(-1px);
     }}
 
@@ -476,7 +461,7 @@ def _build_app_css(bg_base64: str) -> str:
 
     /* ── 区切り線 ───────────────────────────────────────────────── */
     hr {{
-        border-color: rgba(255, 255, 255, 0.10) !important;
+        border-color: rgba(44, 36, 22, 0.12) !important;
         margin: 1.5rem 0 !important;
     }}
 
@@ -679,7 +664,7 @@ def _build_app_css(bg_base64: str) -> str:
         0%, 80%, 100% {{ transform: scale(0.6); opacity: 0.5; }}
         40%            {{ transform: scale(1.2); opacity: 1;   }}
     }}
-    .loading-message    {{ font-size: 1.1rem; font-weight: 700; color: #FFFFFF; }}
+    .loading-message    {{ font-size: 1.1rem; font-weight: 700; color: var(--text); }}
     .loading-submessage {{ font-size: 0.9rem; color: var(--text-muted); }}
 
     @media (prefers-reduced-motion: reduce) {{
@@ -1269,15 +1254,7 @@ def main() -> None:
     """Streamlit アプリのエントリーポイント。"""
     _init_session_state()
 
-    # 検索結果表示中かどうか（背景画像を代官山蔦屋書店に切り替える）
-    current_keyword = (st.session_state.get("keyword_input") or "").strip()
-    if not current_keyword:
-        st.session_state.showing_results = False
-    use_results_bg = bool(st.session_state.get("showing_results", False))
-
-    top_b64 = _load_top_bg_base64()
-    results_b64 = _load_results_bg_base64()
-    bg_base64 = results_b64 if use_results_bg else top_b64
+    bg_base64 = _load_bg_base64()
     st.markdown(_build_app_css(bg_base64), unsafe_allow_html=True)
 
     # ── ヒーローセクション ────────────────────────────────────────────────
@@ -1347,13 +1324,8 @@ def main() -> None:
         if not keyword_input:
             st.warning("⚠️ キーワードを入力してください")
         else:
-            st.session_state.showing_results = True
             _add_to_history(keyword_input)
-            st.rerun()
-
-    # 検索結果表示（背景は代官山蔦屋書店に切り替わった状態）
-    if st.session_state.get("showing_results") and current_keyword:
-        _render_search_results(current_keyword)
+            _render_search_results(keyword_input)
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
