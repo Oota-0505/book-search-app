@@ -291,31 +291,31 @@ def _build_app_css(bg_base64: str) -> str:
 <style>
     /* ── カラートークン ─────────────────────────────────────────── */
     :root {{
-        --text:        #2C2416;
-        --text-muted:  rgba(44, 36, 22, 0.72);
-        --border:      rgba(44, 36, 22, 0.12);
-        --shadow:      0 12px 32px rgba(0, 0, 0, 0.12);
-        --shadow-hover:0 22px 52px rgba(0, 0, 0, 0.18);
-        --gold:        #B8860B;
-        --gold-glow:   rgba(184, 134, 11, 0.22);
-        --ok:          #1a7f4a;
-        --ng:          #c53030;
-        --warn:        #b45309;
-        --blue0:       #2563EB;
-        --blue1:       #1d4ed8;
-        --green0:      #16a34a;
-        --green1:      #15803d;
+        --text:        #F5F0E8;
+        --text-muted:  rgba(245, 240, 232, 0.60);
+        --border:      rgba(255, 255, 255, 0.12);
+        --shadow:      0 12px 32px rgba(0, 0, 0, 0.40);
+        --shadow-hover:0 22px 52px rgba(0, 0, 0, 0.55);
+        --gold:        #C8933E;
+        --gold-glow:   rgba(200, 147, 62, 0.30);
+        --ok:          #34D399;
+        --ng:          #F87171;
+        --warn:        #FBBF24;
+        --blue0:       #60A5FA;
+        --blue1:       #3B82F6;
+        --green0:      #34D399;
+        --green1:      #059669;
     }}
 
     /* ── アプリ全体 ──────────────────────────────────────────────── */
-    /* 明るいオーバーレイで松本十畳の写真を際立たせる */
+    /* 黒系オーバーレイ + 背景画像 */
     .stApp {{
         background-image:
             linear-gradient(
                 180deg,
-                rgba(255, 252, 248, 0.18) 0%,
-                rgba(255, 250, 242, 0.28) 40%,
-                rgba(255, 248, 238, 0.42) 100%
+                rgba(6,  4, 18, 0.76) 0%,
+                rgba(10, 7, 28, 0.65) 40%,
+                rgba(14,10, 35, 0.80) 100%
             ),
             {bg_layer};
         background-size: cover;
@@ -341,10 +341,10 @@ def _build_app_css(bg_base64: str) -> str:
         font-size: clamp(3rem, 7vw, 5.5rem);
         font-weight: 900;
         letter-spacing: -0.035em;
-        color: var(--text);
+        color: #FFFFFF;
         line-height: 1.06;
         margin: 0 0 1.2rem;
-        text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+        text-shadow: 0 4px 32px rgba(0, 0, 0, 0.7);
         font-family: ui-sans-serif, system-ui, -apple-system,
                      "Segoe UI", "Helvetica Neue", Arial;
     }}
@@ -371,9 +371,9 @@ def _build_app_css(bg_base64: str) -> str:
         gap: 6px;
         padding: 0.5rem 1rem;
         border-radius: 999px;
-        border: 1px solid rgba(44, 36, 22, 0.2);
-        background: rgba(255, 255, 255, 0.78);
-        color: var(--text);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.08);
+        color: #F5F0E8;
         font-size: 0.9rem;
         font-weight: 600;
         text-decoration: none;
@@ -381,34 +381,35 @@ def _build_app_css(bg_base64: str) -> str:
         transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
     }}
     .mypage-link:hover {{
-        background: rgba(255, 250, 242, 0.95);
-        border-color: var(--gold);
-        color: var(--text);
+        background: rgba(200, 147, 62, 0.18);
+        border-color: rgba(200, 147, 62, 0.45);
+        color: #FFFFFF;
         transform: translateY(-1px);
     }}
 
     /* ── セクション見出し ───────────────────────────────────────── */
-    h2, h3 {{ color: var(--text) !important; letter-spacing: -0.015em; }}
+    h2, h3 {{ color: #FFFFFF !important; letter-spacing: -0.015em; }}
 
     /* ── テキスト入力（検索バー）────────────────────────────────── */
     div[data-testid="stTextInput"] input {{
-        background: rgba(255, 255, 255, 0.88) !important;
-        border: 1px solid rgba(44, 36, 22, 0.18) !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.20) !important;
         border-radius: 14px !important;
         padding: 0.90rem 1.10rem !important;
-        color: var(--text) !important;
+        color: #FFFFFF !important;
         font-size: 1rem !important;
         backdrop-filter: blur(10px);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+        -webkit-backdrop-filter: blur(10px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
         transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
     }}
     div[data-testid="stTextInput"] input::placeholder {{
-        color: var(--text-muted) !important;
+        color: rgba(255, 255, 255, 0.38) !important;
     }}
     div[data-testid="stTextInput"] input:focus {{
         border-color: var(--gold) !important;
-        background: rgba(255, 255, 255, 0.95) !important;
-        box-shadow: 0 0 0 3px var(--gold-glow), 0 4px 16px rgba(0,0,0,0.1) !important;
+        background: rgba(255, 255, 255, 0.12) !important;
+        box-shadow: 0 0 0 3px var(--gold-glow), 0 4px 16px rgba(0,0,0,0.3) !important;
     }}
     div[data-testid="stTextInput"] label {{
         color: var(--text-muted) !important;
@@ -439,8 +440,8 @@ def _build_app_css(bg_base64: str) -> str:
     button[data-testid="stBaseButton-secondary"] {{
         width: 100%;
         border-radius: 999px !important;
-        border: 1px solid rgba(44, 36, 22, 0.2) !important;
-        background: rgba(255, 255, 255, 0.75) !important;
+        border: 1px solid rgba(255, 255, 255, 0.16) !important;
+        background: rgba(255, 255, 255, 0.07) !important;
         color: var(--text) !important;
         font-weight: 600 !important;
         padding: 0.45rem 0.65rem !important;
@@ -448,8 +449,8 @@ def _build_app_css(bg_base64: str) -> str:
         transition: background 0.15s ease, transform 0.15s ease !important;
     }}
     button[data-testid="stBaseButton-secondary"]:hover {{
-        background: rgba(255, 248, 240, 0.95) !important;
-        border-color: var(--gold) !important;
+        background: rgba(200, 147, 62, 0.15) !important;
+        border-color: rgba(200, 147, 62, 0.40) !important;
         transform: translateY(-1px);
     }}
 
@@ -461,8 +462,26 @@ def _build_app_css(bg_base64: str) -> str:
 
     /* ── 区切り線 ───────────────────────────────────────────────── */
     hr {{
-        border-color: rgba(44, 36, 22, 0.12) !important;
+        border-color: rgba(255, 255, 255, 0.10) !important;
         margin: 1.5rem 0 !important;
+    }}
+
+    /* ── 結果カードグリッド（4枚同時表示）────────────────────────── */
+    .results-grid {{
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto;
+        gap: 12px;
+        width: 100%;
+        margin: 12px 0;
+    }}
+    .results-grid .result-card {{
+        margin: 0;
+    }}
+    @media (max-width: 640px) {{
+        .results-grid {{
+            grid-template-columns: 1fr;
+        }}
     }}
 
     /* ── 結果カード ─────────────────────────────────────────────── */
@@ -664,7 +683,7 @@ def _build_app_css(bg_base64: str) -> str:
         0%, 80%, 100% {{ transform: scale(0.6); opacity: 0.5; }}
         40%            {{ transform: scale(1.2); opacity: 1;   }}
     }}
-    .loading-message    {{ font-size: 1.1rem; font-weight: 700; color: var(--text); }}
+    .loading-message    {{ font-size: 1.1rem; font-weight: 700; color: #FFFFFF; }}
     .loading-submessage {{ font-size: 0.9rem; color: var(--text-muted); }}
 
     @media (prefers-reduced-motion: reduce) {{
@@ -825,7 +844,7 @@ def check_kani_lib(keyword: str) -> BookStatus:
 
 def check_sanseido(keyword: str) -> BookStatus:
     """
-    岐阜駅本屋の在庫をチェックする。
+    岐阜駅本屋の在庫をチェックする（書籍のみ。電子書籍は在庫に含めない）。
 
     Args:
         keyword: 検索キーワード
@@ -862,12 +881,14 @@ def check_sanseido(keyword: str) -> BookStatus:
             logger.info("岐阜駅本屋: 該当なし（0件）")
             return _S_NONE
 
+        # 在庫記号: ○=書籍在庫あり, ×=なし, △/▲=電子書籍等（書籍のみの在庫表示のため無視）
         stock_marks = re.findall(r"在庫：\s*([○×△▲])", res.text)
         if stock_marks:
-            if any(mark != "×" for mark in stock_marks):
-                logger.info("岐阜駅本屋: 在庫あり")
+            # 書籍（○）が1件でもあれば在庫あり。△・▲は電子書籍のためカウントしない。
+            if any(mark == "○" for mark in stock_marks):
+                logger.info("岐阜駅本屋: 在庫あり（書籍）")
                 return _S_AVAILABLE
-            logger.info("岐阜駅本屋: 在庫なし（在庫記号 ×）")
+            logger.info("岐阜駅本屋: 在庫なし（書籍は×のみ、または△/▲のみ）")
             return _S_NONE
 
         if total is not None and total > 0:
@@ -1205,45 +1226,17 @@ def _render_search_results(keyword: str) -> None:
         tsutaya_status.text,
     )
 
-    r1c1, r1c2 = st.columns(2)
-    r2c1, r2c2 = st.columns(2)
-
-    with r1c1:
-        st.markdown(
-            _create_result_card(
-                "メディコス", "🏢",
-                status["gifu"], build_gifu_url(keyword),
-                card_images["gifu"],
-            ),
-            unsafe_allow_html=True,
-        )
-    with r1c2:
-        st.markdown(
-            _create_result_card(
-                "ミライブ", "🌲",
-                status["kani"], build_kani_url(keyword),
-                card_images["kani"],
-            ),
-            unsafe_allow_html=True,
-        )
-    with r2c1:
-        st.markdown(
-            _create_result_card(
-                "岐阜駅本屋", "📖",
-                status["sanseido"], build_sanseido_url(keyword),
-                card_images["sanseido"],
-            ),
-            unsafe_allow_html=True,
-        )
-    with r2c2:
-        st.markdown(
-            _create_result_card(
-                "各務原BC", "☕",
-                tsutaya_status, tsutaya_url,
-                card_images["tsutaya"],
-            ),
-            unsafe_allow_html=True,
-        )
+    # 4枚のカードを1つのグリッドで同時表示（Streamlit columns による段階表示を回避）
+    cards_html = (
+        _create_result_card("メディコス", "🏢", status["gifu"], build_gifu_url(keyword), card_images["gifu"])
+        + _create_result_card("ミライブ", "🌲", status["kani"], build_kani_url(keyword), card_images["kani"])
+        + _create_result_card("岐阜駅本屋", "📖", status["sanseido"], build_sanseido_url(keyword), card_images["sanseido"])
+        + _create_result_card("各務原BC", "☕", tsutaya_status, tsutaya_url, card_images["tsutaya"])
+    )
+    st.markdown(
+        f'<div class="results-grid">{cards_html}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ============================================================================
