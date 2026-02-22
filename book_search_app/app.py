@@ -201,10 +201,11 @@ _S_LENDING   = BookStatus("貸出中",   "accent-warn", "⚠️")
 _S_PENDING   = BookStatus("判定保留", "accent-warn", "⚠️")
 _S_ERROR     = BookStatus("エラー",   "accent-warn", "⚠️")
 
-# ── カード背景画像（リポジトリルートの画像ファイル）──────────────────────────
-# 各サイトに対応する画像ファイル名。拡張子に応じて MIME を判定して data URI 化する。
+# ── カード背景画像・静的アセット ─────────────────────────────────────────
+# 画像・CSS はすべて static/ 配下に集約（images / css）。
 _APP_DIR: Path = Path(__file__).parent
-_IMAGES_DIR: Path = _APP_DIR / "images"
+_STATIC_DIR: Path = _APP_DIR / "static"
+_IMAGES_DIR: Path = _STATIC_DIR / "images"
 
 CARD_BG_PATHS: Dict[str, Path] = {
     "gifu":     _IMAGES_DIR / "メディコス.webp",
@@ -270,7 +271,7 @@ def _load_card_images_base64() -> Dict[str, str]:
 # CSS ビルダー
 # ============================================================================
 
-_CSS_DIR: Path = _APP_DIR / "static" / "css"
+_CSS_DIR: Path = _STATIC_DIR / "css"
 _CSS_FILES: tuple[str, ...] = (
     "variables.css",
     "layout.css",
