@@ -10,11 +10,6 @@
 .results-grid .result-card {
     margin: 0;
 }
-@media (max-width: 640px) {
-    .results-grid {
-        grid-template-columns: 1fr;
-    }
-}
 
 /* ── 結果カード ─────────────────────────────────────────────── */
 .result-card {

@@ -889,7 +889,7 @@ def main() -> None:
                             <animate attributeName="opacity" dur="2s" repeatCount="indefinite" keyTimes="0;0.8;0.85;0.95;1" values="1;1;0;0;1"/>
                         </path>
                     </g>
-                    <g filter="url(#hero-glass)" transform="translate(6, 24) scale(0.68)">
+                    <g filter="url(#hero-glass)" transform="translate(-10, 42) scale(0.68)">
                         <line x1="14" y1="38" x2="38" y2="14" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
                         <circle cx="42" cy="12" r="8" fill="none" stroke="#fff" stroke-width="5.5"/>
                         <line x1="14" y1="38" x2="38" y2="14" stroke="#1f2937" stroke-width="4" stroke-linecap="round"/>
