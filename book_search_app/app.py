@@ -335,6 +335,18 @@ def _build_app_css(bg_base64: str) -> str:
         text-align: center;
         padding: 5.5rem 1.5rem 4rem;
     }}
+    .hero-heading {{
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        flex-wrap: wrap;
+    }}
+    .hero-icon {{
+        flex-shrink: 0;
+        width: 56px;
+        height: 56px;
+    }}
 
     /* メインタイトル */
     .hero-title {{
@@ -361,30 +373,40 @@ def _build_app_css(bg_base64: str) -> str:
     .mypage-links {{
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
+        gap: 14px;
         justify-content: center;
         margin-bottom: 1.5rem;
     }}
     .mypage-link {{
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 0.5rem 1rem;
-        border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        background: rgba(255, 255, 255, 0.08);
-        color: #F5F0E8;
-        font-size: 0.9rem;
-        font-weight: 600;
-        text-decoration: none;
-        backdrop-filter: blur(8px);
-        transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-    }}
-    .mypage-link:hover {{
-        background: rgba(200, 147, 62, 0.18);
-        border-color: rgba(200, 147, 62, 0.45);
+        gap: 10px;
+        padding: 0.65rem 1.35rem;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 100%);
         color: #FFFFFF;
-        transform: translateY(-1px);
+        font-size: 0.95rem;
+        font-weight: 700;
+        text-decoration: none !important;
+        letter-spacing: 0.02em;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    }}
+    .mypage-link:hover,
+    .mypage-link:focus {{
+        background: linear-gradient(135deg, rgba(200, 147, 62, 0.28) 0%, rgba(200, 147, 62, 0.14) 100%);
+        border-color: rgba(200, 147, 62, 0.55);
+        color: #FFFFFF;
+        text-decoration: none !important;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(200, 147, 62, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    }}
+    .mypage-link:visited {{
+        color: #FFFFFF;
+        text-decoration: none !important;
     }}
 
     /* ── セクション見出し ───────────────────────────────────────── */
@@ -1250,11 +1272,40 @@ def main() -> None:
     bg_base64 = _load_bg_base64()
     st.markdown(_build_app_css(bg_base64), unsafe_allow_html=True)
 
-    # ── ヒーローセクション ────────────────────────────────────────────────
+    # ── ヒーローセクション（本＋虫眼鏡アイコンはレンズが右上向き）────────────
     st.markdown(
         """
         <div class="hero-section">
-            <h1 class="hero-title">Book Finder</h1>
+            <div class="hero-heading">
+                <svg class="hero-icon" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <defs>
+                        <filter id="hero-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.3"/>
+                        </filter>
+                        <filter id="hero-glass" x="-20%" y="-20%" width="140%" height="140%">
+                            <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.3"/>
+                        </filter>
+                    </defs>
+                    <g transform="translate(12, 16) scale(0.75)" filter="url(#hero-shadow)">
+                        <path d="M 2 15 Q 18 8 32 19 Q 46 8 62 15 L 62 53 Q 46 46 32 57 Q 18 46 2 53 Z" fill="#2563eb" stroke="#1e40af" stroke-width="1.5" stroke-linejoin="round"/>
+                        <path d="M 8 50 L 8 53 Q 20 47 32 57 L 32 54 Q 20 44 8 50 Z" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="1" stroke-linejoin="round"/>
+                        <path d="M 56 50 L 56 53 Q 44 47 32 57 L 32 54 Q 44 44 56 50 Z" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="1" stroke-linejoin="round"/>
+                        <path d="M 8 16 Q 20 10 32 20 L 32 54 Q 20 44 8 50 Z" fill="#fff" stroke="#cbd5e1" stroke-width="1.5" stroke-linejoin="round"/>
+                        <path d="M 56 16 Q 44 10 32 20 L 32 54 Q 44 44 56 50 Z" fill="#fff" stroke="#cbd5e1" stroke-width="1.5" stroke-linejoin="round"/>
+                        <line x1="32" y1="20" x2="32" y2="54" stroke="#cbd5e1" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M 32 20 L 35 32 L 32 35 L 29 32 Z" fill="#ef4444" stroke="#b91c1c" stroke-width="1" stroke-linejoin="round"/>
+                    </g>
+                    <!-- 虫眼鏡: レンズが右上、柄が左下に向く -->
+                    <g filter="url(#hero-glass)" transform="translate(18, 6)">
+                        <line x1="14" y1="38" x2="38" y2="14" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="42" cy="12" r="8" fill="none" stroke="#fff" stroke-width="5.5"/>
+                        <line x1="14" y1="38" x2="38" y2="14" stroke="#1f2937" stroke-width="4" stroke-linecap="round"/>
+                        <circle cx="42" cy="12" r="8" fill="#e0f2fe" fill-opacity="0.9" stroke="#1f2937" stroke-width="2.5"/>
+                        <path d="M 38 10 A 5 5 0 0 1 41 7" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>
+                    </g>
+                </svg>
+                <h1 class="hero-title">Book Finder</h1>
+            </div>
             <p class="hero-sub">岐阜の本を、ひとまとめに。</p>
         </div>
         """,
