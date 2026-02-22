@@ -210,11 +210,11 @@ CARD_BG_PATHS: Dict[str, Path] = {
     "tsutaya":  Path(__file__).parent.parent / "各務原BC.jpg",
 }
 
-# ── トップ背景画像のパス ────────────────────────────────────────────────────
-# __file__ = このスクリプトの絶対パス（book_search_app/app.py）
-# .parent   = book_search_app/
-# .parent   = リポジトリルート（Book Research/）
-_BG_IMAGE_PATH: Path = Path(__file__).parent.parent / "代官山蔦屋書店.jpg"
+# ── 背景画像のパス ──────────────────────────────────────────────────────────
+# トップ画面 = 松本十畳、検索結果表示時 = 代官山蔦屋書店に切り替える
+_REPO_ROOT: Path = Path(__file__).parent.parent
+_TOP_BG_IMAGE_PATH: Path = _REPO_ROOT / "松本十畳.jpg"
+_RESULTS_BG_IMAGE_PATH: Path = _REPO_ROOT / "代官山蔦屋書店.jpg"
 
 
 # ============================================================================
@@ -222,24 +222,24 @@ _BG_IMAGE_PATH: Path = Path(__file__).parent.parent / "代官山蔦屋書店.jpg
 # ============================================================================
 
 @st.cache_resource
-def _load_bg_base64() -> str:
-    """
-    トップ背景画像をファイルから読み込み、base64 文字列として返す。
-
-    @st.cache_resource:
-        Streamlit はページ操作のたびにスクリプト全体を再実行するが、
-        このデコレータを付けると「アプリサーバー起動後 1 回だけ」実行される。
-        大きな画像ファイルを毎回読み直すのを防ぐためにキャッシュする。
-
-    Returns:
-        base64 エンコードされた JPEG 文字列。
-        ファイルが見つからない場合は空文字列を返す（背景なしにフォールバック）。
-    """
+def _load_top_bg_base64() -> str:
+    """トップ画面用背景画像（松本十畳）を base64 で返す。"""
     try:
-        with open(_BG_IMAGE_PATH, "rb") as f:
+        with open(_TOP_BG_IMAGE_PATH, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
     except FileNotFoundError:
-        logger.warning("背景画像が見つかりません: %s", _BG_IMAGE_PATH)
+        logger.warning("トップ背景画像が見つかりません: %s", _TOP_BG_IMAGE_PATH)
+        return ""
+
+
+@st.cache_resource
+def _load_results_bg_base64() -> str:
+    """検索結果表示用背景画像（代官山蔦屋書店）を base64 で返す。"""
+    try:
+        with open(_RESULTS_BG_IMAGE_PATH, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+    except FileNotFoundError:
+        logger.warning("検索結果用背景画像が見つかりません: %s", _RESULTS_BG_IMAGE_PATH)
         return ""
 
 
@@ -348,21 +348,6 @@ def _build_app_css(bg_base64: str) -> str:
     .hero-section {{
         text-align: center;
         padding: 5.5rem 1.5rem 4rem;
-    }}
-
-    /* 上部の小さい帯ラベル */
-    .hero-eyebrow {{
-        display: inline-block;
-        font-size: 0.72rem;
-        letter-spacing: 0.28em;
-        text-transform: uppercase;
-        color: var(--gold);
-        border: 1px solid rgba(200, 147, 62, 0.35);
-        border-radius: 999px;
-        padding: 5px 20px;
-        margin-bottom: 1.6rem;
-        background: rgba(200, 147, 62, 0.08);
-        backdrop-filter: blur(4px);
     }}
 
     /* メインタイトル */
@@ -1282,17 +1267,23 @@ def _render_search_results(keyword: str) -> None:
 
 def main() -> None:
     """Streamlit アプリのエントリーポイント。"""
-    # 背景画像を base64 ロード（@st.cache_resource でキャッシュ済み）
-    bg_base64 = _load_bg_base64()
-    st.markdown(_build_app_css(bg_base64), unsafe_allow_html=True)
-
     _init_session_state()
+
+    # 検索結果表示中かどうか（背景画像を代官山蔦屋書店に切り替える）
+    current_keyword = (st.session_state.get("keyword_input") or "").strip()
+    if not current_keyword:
+        st.session_state.showing_results = False
+    use_results_bg = bool(st.session_state.get("showing_results", False))
+
+    top_b64 = _load_top_bg_base64()
+    results_b64 = _load_results_bg_base64()
+    bg_base64 = results_b64 if use_results_bg else top_b64
+    st.markdown(_build_app_css(bg_base64), unsafe_allow_html=True)
 
     # ── ヒーローセクション ────────────────────────────────────────────────
     st.markdown(
         """
         <div class="hero-section">
-            <div class="hero-eyebrow">メディコス · ミライブ · 岐阜駅本屋 · 各務原BC</div>
             <h1 class="hero-title">Book Finder</h1>
             <p class="hero-sub">岐阜の本を、ひとまとめに。</p>
         </div>
@@ -1356,8 +1347,13 @@ def main() -> None:
         if not keyword_input:
             st.warning("⚠️ キーワードを入力してください")
         else:
+            st.session_state.showing_results = True
             _add_to_history(keyword_input)
-            _render_search_results(keyword_input)
+            st.rerun()
+
+    # 検索結果表示（背景は代官山蔦屋書店に切り替わった状態）
+    if st.session_state.get("showing_results") and current_keyword:
+        _render_search_results(current_keyword)
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
