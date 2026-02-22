@@ -45,12 +45,27 @@
 ```
 Book Research/
 ├── book_search_app/
-│   └── app.py          # メインアプリケーション
+│   ├── app.py              # メインアプリケーション
+│   ├── images/             # アプリ用画像（背景・カード）
+│   │   ├── 松本十畳.jpg    # トップ背景
+│   │   ├── メディコス.webp
+│   │   ├── ミライブ.webp
+│   │   ├── 岐阜駅本屋.png
+│   │   └── 各務原BC.jpg
+│   └── static/
+│       └── css/            # スタイルシート（分割）
+│           ├── variables.css
+│           ├── layout.css
+│           ├── forms.css
+│           ├── cards.css
+│           ├── loading.css
+│           └── responsive.css
 ├── docs/
-│   ├── README.md       # このファイル（開発ガイド）
-│   └── requirements.md # 要件定義書
-├── requirements.txt     # 依存ライブラリ
-└── runtime.txt         # ランタイム設定
+│   ├── README.md           # このファイル（開発ガイド）
+│   └── requirements.md     # 要件定義書
+├── robots_check/          # robots.txt チェック用ユーティリティ
+├── requirements.txt        # 依存ライブラリ
+└── .streamlit/             # Streamlit 設定
 ```
 
 ## 注意事項

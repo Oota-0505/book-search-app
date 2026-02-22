@@ -1,0 +1,17 @@
+/* ── カラートークン ─────────────────────────────────────────── */
+:root {
+    --text:        #F5F0E8;
+    --text-muted:  rgba(245, 240, 232, 0.60);
+    --border:      rgba(255, 255, 255, 0.12);
+    --shadow:      0 12px 32px rgba(0, 0, 0, 0.40);
+    --shadow-hover:0 22px 52px rgba(0, 0, 0, 0.55);
+    --gold:        #C8933E;
+    --gold-glow:   rgba(200, 147, 62, 0.30);
+    --ok:          #34D399;
+    --ng:          #F87171;
+    --warn:        #FBBF24;
+    --blue0:       #60A5FA;
+    --blue1:       #3B82F6;
+    --green0:      #34D399;
+    --green1:      #059669;
+}

@@ -203,16 +203,18 @@ _S_ERROR     = BookStatus("エラー",   "accent-warn", "⚠️")
 
 # ── カード背景画像（リポジトリルートの画像ファイル）──────────────────────────
 # 各サイトに対応する画像ファイル名。拡張子に応じて MIME を判定して data URI 化する。
+_APP_DIR: Path = Path(__file__).parent
+_IMAGES_DIR: Path = _APP_DIR / "images"
+
 CARD_BG_PATHS: Dict[str, Path] = {
-    "gifu":     Path(__file__).parent.parent / "メディコス.webp",
-    "kani":     Path(__file__).parent.parent / "ミライブ.webp",
-    "sanseido": Path(__file__).parent.parent / "岐阜駅本屋.png",
-    "tsutaya":  Path(__file__).parent.parent / "各務原BC.jpg",
+    "gifu":     _IMAGES_DIR / "メディコス.webp",
+    "kani":     _IMAGES_DIR / "ミライブ.webp",
+    "sanseido": _IMAGES_DIR / "岐阜駅本屋.png",
+    "tsutaya":  _IMAGES_DIR / "各務原BC.jpg",
 }
 
 # ── 背景画像のパス（松本十畳のみ）────────────────────────────────────────────
-_REPO_ROOT: Path = Path(__file__).parent.parent
-_BG_IMAGE_PATH: Path = _REPO_ROOT / "松本十畳.jpg"
+_BG_IMAGE_PATH: Path = _IMAGES_DIR / "松本十畳.jpg"
 
 
 # ============================================================================
@@ -268,11 +270,22 @@ def _load_card_images_base64() -> Dict[str, str]:
 # CSS ビルダー
 # ============================================================================
 
+_CSS_DIR: Path = _APP_DIR / "static" / "css"
+_CSS_FILES: tuple[str, ...] = (
+    "variables.css",
+    "layout.css",
+    "forms.css",
+    "cards.css",
+    "loading.css",
+    "responsive.css",
+)
+
+
 def _build_app_css(bg_base64: str) -> str:
     """
     アプリ全体の CSS を組み立てて返す。
 
-    背景画像を base64 で CSS に直接埋め込むことで、
+    外部 CSS ファイルを読み込み、背景画像を base64 で埋め込む。
     Streamlit Cloud を含む任意のホスティング環境で画像が確実に表示される。
 
     Args:
@@ -281,447 +294,22 @@ def _build_app_css(bg_base64: str) -> str:
     Returns:
         <style> タグを含む HTML 文字列
     """
-    # 背景画像が読み込めた場合は data URI、なければグラデーションのみ
     if bg_base64:
         bg_layer = f'url("data:image/jpeg;base64,{bg_base64}")'
     else:
         bg_layer = "none"
 
-    return f"""
-<style>
-    /* ── カラートークン ─────────────────────────────────────────── */
-    :root {{
-        --text:        #F5F0E8;
-        --text-muted:  rgba(245, 240, 232, 0.60);
-        --border:      rgba(255, 255, 255, 0.12);
-        --shadow:      0 12px 32px rgba(0, 0, 0, 0.40);
-        --shadow-hover:0 22px 52px rgba(0, 0, 0, 0.55);
-        --gold:        #C8933E;
-        --gold-glow:   rgba(200, 147, 62, 0.30);
-        --ok:          #34D399;
-        --ng:          #F87171;
-        --warn:        #FBBF24;
-        --blue0:       #60A5FA;
-        --blue1:       #3B82F6;
-        --green0:      #34D399;
-        --green1:      #059669;
-    }}
+    parts: list[str] = []
+    for name in _CSS_FILES:
+        path = _CSS_DIR / name
+        try:
+            content = path.read_text(encoding="utf-8")
+            content = content.replace("__BG_LAYER__", bg_layer)
+            parts.append(content)
+        except FileNotFoundError:
+            logger.warning("CSS ファイルが見つかりません: %s", path)
 
-    /* ── アプリ全体 ──────────────────────────────────────────────── */
-    /* 黒系オーバーレイ + 背景画像 */
-    .stApp {{
-        background-image:
-            linear-gradient(
-                180deg,
-                rgba(6,  4, 18, 0.76) 0%,
-                rgba(10, 7, 28, 0.65) 40%,
-                rgba(14,10, 35, 0.80) 100%
-            ),
-            {bg_layer};
-        background-size: cover;
-        background-position: center top;
-        background-attachment: fixed;
-        color: var(--text);
-    }}
-
-    .block-container {{
-        max-width: 1080px;
-        padding-top: 0 !important;
-        padding-bottom: 3.5rem;
-    }}
-
-    /* ── ヒーローセクション ─────────────────────────────────────── */
-    .hero-section {{
-        text-align: center;
-        padding: 5.5rem 1.5rem 4rem;
-    }}
-    .hero-heading {{
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 16px;
-        flex-wrap: wrap;
-    }}
-    .hero-icon {{
-        flex-shrink: 0;
-        width: 72px;
-        height: 72px;
-        overflow: visible;
-    }}
-
-    /* メインタイトル */
-    .hero-title {{
-        font-size: clamp(3rem, 7vw, 5.5rem);
-        font-weight: 900;
-        letter-spacing: -0.035em;
-        color: #FFFFFF;
-        line-height: 1.06;
-        margin: 0 0 1.2rem;
-        text-shadow: 0 4px 32px rgba(0, 0, 0, 0.7);
-        font-family: ui-sans-serif, system-ui, -apple-system,
-                     "Segoe UI", "Helvetica Neue", Arial;
-    }}
-
-    /* サブタイトル */
-    .hero-sub {{
-        font-size: 1.05rem;
-        color: var(--text-muted);
-        margin: 0;
-        letter-spacing: 0.06em;
-    }}
-
-    /* ── マイページリンク（検索ボックスの上）──────────────────────── */
-    .mypage-links {{
-        display: flex;
-        flex-wrap: wrap;
-        gap: 14px;
-        justify-content: center;
-        margin-bottom: 1.5rem;
-    }}
-    .mypage-link {{
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        padding: 0.65rem 1.35rem;
-        border-radius: 14px;
-        border: 1px solid rgba(255, 255, 255, 0.28);
-        background: linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 100%);
-        color: #FFFFFF;
-        font-size: 0.95rem;
-        font-weight: 700;
-        text-decoration: none !important;
-        letter-spacing: 0.02em;
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-        transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
-    }}
-    .mypage-link:hover,
-    .mypage-link:focus {{
-        background: linear-gradient(135deg, rgba(200, 147, 62, 0.28) 0%, rgba(200, 147, 62, 0.14) 100%);
-        border-color: rgba(200, 147, 62, 0.55);
-        color: #FFFFFF;
-        text-decoration: none !important;
-        transform: translateY(-2px);
-        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(200, 147, 62, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-    }}
-    .mypage-link:visited {{
-        color: #FFFFFF;
-        text-decoration: none !important;
-    }}
-
-    /* ── セクション見出し ───────────────────────────────────────── */
-    h2, h3 {{ color: #FFFFFF !important; letter-spacing: -0.015em; }}
-
-    /* ── テキスト入力（検索バー）────────────────────────────────── */
-    div[data-testid="stTextInput"] input {{
-        background: rgba(255, 255, 255, 0.08) !important;
-        border: 1px solid rgba(255, 255, 255, 0.20) !important;
-        border-radius: 14px !important;
-        padding: 0.90rem 1.10rem !important;
-        color: #FFFFFF !important;
-        font-size: 1rem !important;
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
-        transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
-    }}
-    div[data-testid="stTextInput"] input::placeholder {{
-        color: rgba(255, 255, 255, 0.38) !important;
-    }}
-    div[data-testid="stTextInput"] input:focus {{
-        border-color: var(--gold) !important;
-        background: rgba(255, 255, 255, 0.12) !important;
-        box-shadow: 0 0 0 3px var(--gold-glow), 0 4px 16px rgba(0,0,0,0.3) !important;
-    }}
-    div[data-testid="stTextInput"] label {{
-        color: var(--text-muted) !important;
-    }}
-
-    /* ── 検索ボタン（プライマリ）────────────────────────────────── */
-    button[data-testid="stBaseButton-primary"] {{
-        width: 100%;
-        background: linear-gradient(90deg, #C8933E 0%, #E8B55A 100%) !important;
-        color: #120A00 !important;
-        font-weight: 900 !important;
-        border: none !important;
-        padding: 0.75rem 1rem !important;
-        border-radius: 14px !important;
-        letter-spacing: 0.02em !important;
-        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-        box-shadow: 0 10px 28px rgba(200, 147, 62, 0.40) !important;
-        min-height: 50px !important;
-        font-size: 0.97rem !important;
-    }}
-    button[data-testid="stBaseButton-primary"]:hover {{
-        background: linear-gradient(90deg, #E8B55A 0%, #FFCE72 100%) !important;
-        transform: translateY(-2px);
-        box-shadow: 0 16px 36px rgba(200, 147, 62, 0.50) !important;
-    }}
-
-    /* ── 履歴ボタン（セカンダリ）────────────────────────────────── */
-    button[data-testid="stBaseButton-secondary"] {{
-        width: 100%;
-        border-radius: 999px !important;
-        border: 1px solid rgba(255, 255, 255, 0.16) !important;
-        background: rgba(255, 255, 255, 0.07) !important;
-        color: var(--text) !important;
-        font-weight: 600 !important;
-        padding: 0.45rem 0.65rem !important;
-        backdrop-filter: blur(6px);
-        transition: background 0.15s ease, transform 0.15s ease !important;
-    }}
-    button[data-testid="stBaseButton-secondary"]:hover {{
-        background: rgba(200, 147, 62, 0.15) !important;
-        border-color: rgba(200, 147, 62, 0.40) !important;
-        transform: translateY(-1px);
-    }}
-
-    /* ── キャプション ───────────────────────────────────────────── */
-    .stCaption,
-    [data-testid="stCaptionContainer"] p {{
-        color: var(--text-muted) !important;
-    }}
-
-    /* ── 区切り線 ───────────────────────────────────────────────── */
-    hr {{
-        border-color: rgba(255, 255, 255, 0.10) !important;
-        margin: 1.5rem 0 !important;
-    }}
-
-    /* ── 結果カードグリッド（4枚同時表示）────────────────────────── */
-    .results-grid {{
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        grid-template-rows: auto auto;
-        gap: 12px;
-        width: 100%;
-        margin: 12px 0;
-    }}
-    .results-grid .result-card {{
-        margin: 0;
-    }}
-    @media (max-width: 640px) {{
-        .results-grid {{
-            grid-template-columns: 1fr;
-        }}
-    }}
-
-    /* ── 結果カード ─────────────────────────────────────────────── */
-    .result-card {{
-        border-radius: 18px;
-        margin: 8px 0;
-        box-shadow: var(--shadow);
-        transition: transform 0.22s ease, box-shadow 0.22s ease;
-        position: relative;
-        overflow: hidden;
-        background-size: cover;
-        background-position: center;
-        min-height: 210px;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-end;
-    }}
-    .result-card:hover {{
-        transform: translateY(-4px);
-        box-shadow: var(--shadow-hover);
-    }}
-
-    /* 左端のステータスカラーアクセント（box-shadow の inset で実現） */
-    .accent-ok   {{ box-shadow: var(--shadow), inset 4px 0 0 var(--ok);   }}
-    .accent-ng   {{ box-shadow: var(--shadow), inset 4px 0 0 var(--ng);   }}
-    .accent-warn {{ box-shadow: var(--shadow), inset 4px 0 0 var(--warn); }}
-    .result-card:hover.accent-ok   {{ box-shadow: var(--shadow-hover), inset 4px 0 0 var(--ok);   }}
-    .result-card:hover.accent-ng   {{ box-shadow: var(--shadow-hover), inset 4px 0 0 var(--ng);   }}
-    .result-card:hover.accent-warn {{ box-shadow: var(--shadow-hover), inset 4px 0 0 var(--warn); }}
-
-    /* 画像の上に重ねる暗幕オーバーレイ */
-    .card-overlay {{
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(
-            170deg,
-            rgba(6, 4, 20, 0.45) 0%,
-            rgba(6, 4, 20, 0.82) 100%
-        );
-        border-radius: inherit;
-        z-index: 0;
-    }}
-
-    /* コンテンツはオーバーレイの上（z-index: 1）に置く */
-    .card-content {{
-        position: relative;
-        z-index: 1;
-        padding: 18px 18px 16px;
-    }}
-
-    .card-top {{
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 10px;
-        margin-bottom: 14px;
-    }}
-    .site {{
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        min-width: 0;
-    }}
-    .site-icon {{
-        width: 38px;
-        height: 38px;
-        border-radius: 10px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(255, 255, 255, 0.14);
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        flex: 0 0 auto;
-        font-size: 18px;
-        backdrop-filter: blur(4px);
-    }}
-    .site-title {{
-        font-size: 1.05rem;
-        font-weight: 800;
-        color: #FFFFFF;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        letter-spacing: -0.01em;
-        text-shadow: 0 1px 8px rgba(0, 0, 0, 0.70);
-    }}
-
-    /* ステータスピル（在庫あり・なし・エラーなど） */
-    .status-pill {{
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        border-radius: 999px;
-        padding: 5px 11px;
-        font-size: 0.86rem;
-        font-weight: 700;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        background: rgba(0, 0, 0, 0.40);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        flex: 0 0 auto;
-        color: #FFFFFF;
-    }}
-    .pill-ok   {{ border-color: rgba(52, 211, 153, 0.55); color: #6EE7B7; }}
-    .pill-ng   {{ border-color: rgba(248, 113, 113, 0.55); color: #FCA5A5; }}
-    .pill-warn {{ border-color: rgba(251, 191,  36, 0.55); color: #FDE68A; }}
-
-    /* 「結果を開く」ボタン（カード内） */
-    .btn-link {{
-        display: flex !important;
-        width: 100%;
-        text-align: center;
-        color: rgba(255, 255, 255, 0.90) !important;
-        text-decoration: none;
-        border-radius: 12px;
-        font-weight: 700;
-        padding: 0.65rem 1rem !important;
-        min-height: 46px !important;
-        align-items: center !important;
-        justify-content: center !important;
-        font-size: 0.93rem !important;
-        letter-spacing: 0.01em;
-        background: rgba(255, 255, 255, 0.11) !important;
-        border: 1px solid rgba(255, 255, 255, 0.22) !important;
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        transition: background 0.15s ease, transform 0.15s ease !important;
-    }}
-    .btn-link:hover {{
-        background: rgba(255, 255, 255, 0.22) !important;
-        color: #FFFFFF !important;
-        transform: translateY(-1px);
-    }}
-
-    /* Amazon ボタン */
-    a.btn-amazon {{
-        display: flex !important;
-        width: 100% !important;
-        text-align: center !important;
-        color: #0C0800 !important;
-        text-decoration: none !important;
-        border-radius: 14px !important;
-        font-weight: 900 !important;
-        padding: 0.75rem 1rem !important;
-        min-height: 50px !important;
-        align-items: center !important;
-        justify-content: center !important;
-        box-shadow: 0 10px 28px rgba(52, 211, 153, 0.28) !important;
-        transition: transform 0.15s ease, box-shadow 0.15s ease !important;
-        line-height: 1.4 !important;
-        background: linear-gradient(135deg, var(--green0) 0%, var(--green1) 100%) !important;
-        border: none !important;
-        margin: 0 !important;
-        letter-spacing: 0.01em !important;
-        font-size: 0.97rem !important;
-    }}
-    a.btn-amazon:hover {{
-        transform: translateY(-2px) !important;
-        box-shadow: 0 16px 36px rgba(52, 211, 153, 0.38) !important;
-        filter: brightness(1.06) !important;
-        color: #0C0800 !important;
-    }}
-
-    /* アラート */
-    div[data-testid="stAlertContainer"] {{
-        border-radius: 12px !important;
-        border: 1px solid rgba(251, 191, 36, 0.28) !important;
-        background: rgba(251, 191, 36, 0.09) !important;
-        padding: 1rem !important;
-        color: #FDE68A !important;
-        margin: 0 !important;
-    }}
-
-    /* ── ローディングアニメーション ─────────────────────────────── */
-    .loading-container {{
-        width: 100%;
-        padding: 52px 20px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 20px;
-    }}
-    .loading-dots {{
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }}
-    .loading-dot {{
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        animation: bounce 1.4s ease-in-out infinite;
-    }}
-    .loading-dot:nth-child(1) {{ background: var(--gold);  animation-delay: 0s;   }}
-    .loading-dot:nth-child(2) {{ background: var(--blue0); animation-delay: 0.2s; }}
-    .loading-dot:nth-child(3) {{ background: var(--ok);    animation-delay: 0.4s; }}
-
-    @keyframes bounce {{
-        0%, 80%, 100% {{ transform: scale(0.6); opacity: 0.5; }}
-        40%            {{ transform: scale(1.2); opacity: 1;   }}
-    }}
-    .loading-message    {{ font-size: 1.1rem; font-weight: 700; color: #FFFFFF; }}
-    .loading-submessage {{ font-size: 0.9rem; color: var(--text-muted); }}
-
-    @media (prefers-reduced-motion: reduce) {{
-        .loading-dot {{ animation: none; opacity: 1; transform: scale(1); }}
-    }}
-
-    /* ── レスポンシブ ────────────────────────────────────────────── */
-    @media (max-width: 640px) {{
-        .hero-section  {{ padding: 3.5rem 1rem 2.5rem; }}
-        .hero-title    {{ font-size: 2.6rem; }}
-        .result-card   {{ min-height: 185px; }}
-        .card-content  {{ padding: 14px 14px 12px; }}
-    }}
-</style>
-"""
+    return f"<style>\n" + "\n".join(parts) + "\n</style>"
 
 
 # ============================================================================
