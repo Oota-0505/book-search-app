@@ -8,6 +8,9 @@ env/
 venv/
 .venv
 
+# ログ（検索キーワードが含まれるためコミットしない）
+logs/
+
 # Streamlit
 # .streamlit/config.toml はコミットする（デプロイ設定のため）
 .streamlit/secrets.toml

@@ -13,6 +13,7 @@ import logging
 import logging.handlers
 import re
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -22,126 +23,49 @@ from typing import Dict, Optional, Tuple
 # ============================================================================
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
 
 
 # ============================================================================
 # ロギング設定
 # ============================================================================
-# ────────────────────────────────────────────────────────────────────────────
-# 【学習メモ】Python の logging モジュールとは？
-#
-# print() によるデバッグは手軽ですが、以下の問題があります：
-#   - 本番環境でも常に出力されてしまう
-#   - 重要度（エラーか通知かデバッグか）が区別できない
-#   - ファイルへの保存やローテーションができない
-#
-# 標準ライブラリの logging モジュールを使うと：
-#   - ログレベル（DEBUG / INFO / WARNING / ERROR / CRITICAL）で重要度を管理できる
-#   - ファイルへの書き込みや日付ローテーションが設定だけで実現できる
-#   - 開発環境と本番環境でログの出力先・レベルを切り替えられる
-#
-# 主要な登場人物：
-#   Logger    → ログを記録する窓口。アプリコードから呼び出す。
-#   Handler   → 出力先（ファイル・コンソール・メール等）ごとに定義する。
-#   Formatter → ログ1行の書式（日時・レベル・関数名・メッセージ）を定義する。
-# ────────────────────────────────────────────────────────────────────────────
-
 
 def _setup_logger(name: str = "book_finder") -> logging.Logger:
-    """
-    アプリケーション用ロガーを設定して返す。
-
-    出力先:
-        1. コンソール（sys.stderr）: DEBUG 以上すべてのログ
-        2. logs/app.log（日付ローテーション）: INFO 以上のログ
-
-    Args:
-        name: ロガー名。同じ名前を渡すと同一インスタンスが返る（シングルトン）。
-
-    Returns:
-        設定済みの Logger インスタンス
-    """
-    # ── ログ保存先ディレクトリの作成 ──────────────────────────────────────
-    # pathlib.Path: os.path の代替となるオブジェクト指向のパス操作クラス。
-    #   OS ごとのパス区切り文字（/ や \）を意識せずに書ける。
-    # mkdir(exist_ok=True): ディレクトリがすでに存在してもエラーを出さない。
+    """アプリケーション用ロガーを設定して返す。"""
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
 
-    # ── Logger インスタンスの取得 ──────────────────────────────────────────
-    # logging.getLogger(name) は同じ name に対して常に同一インスタンスを返す。
-    # アプリ全体で1つのロガーを共有できる（グローバルシングルトン）。
     logger = logging.getLogger(name)
-
-    # Streamlit はページ操作のたびにスクリプトを再実行するため、
-    # ハンドラが二重登録されないようにガードする。
     if logger.handlers:
         return logger
 
-    # ── ログレベルの設定 ──────────────────────────────────────────────────
-    # ロガー本体のレベルを最低（DEBUG）にして、
-    # ハンドラ側で実際に出力するレベルを制限するのがよくある設計パターン。
-    #
-    # レベル一覧（低い順）：
-    #   DEBUG    (10) : 開発中の詳細情報（変数の値、処理の流れなど）
-    #   INFO     (20) : 正常動作の記録（検索実行・完了など）
-    #   WARNING  (30) : 問題ではないが注意が必要（タイムアウト、404 など）
-    #   ERROR    (40) : 処理が失敗した場合（例外の発生など）
-    #   CRITICAL (50) : システム全体に影響する重大エラー
     logger.setLevel(logging.DEBUG)
 
-    # ── フォーマッタの定義 ─────────────────────────────────────────────────
-    # ログの各行に含める情報と書式を定義する。
-    # 利用できる主な変数：
-    #   %(asctime)s   : ログ記録日時        例) 2026-02-22 10:00:00
-    #   %(levelname)s : ログレベル名        例) INFO
-    #   %-8s          : 8文字幅・左寄せ（レベル名を揃えて読みやすくする）
-    #   %(funcName)s  : ログを記録した関数名  例) check_gifu_lib
-    #   %(message)s   : ログ本文（logger.info("ここ") の "ここ" の部分）
     formatter = logging.Formatter(
         fmt="%(asctime)s [%(levelname)-8s] %(funcName)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # ── ファイルハンドラ：TimedRotatingFileHandler ─────────────────────────
-    # ログファイルを指定した周期で自動的に切り替えるハンドラ（ローテーション）。
-    # 1ファイルに無制限にログが溜まるのを防ぎ、古いログを自動削除できる。
-    #
-    # 引数の説明：
-    #   filename    : 書き込み先ファイルパス
-    #   when        : ローテーションのタイミング
-    #                 "midnight" = 毎日0時, "h" = 毎時, "W0" = 毎週月曜 など
-    #   backupCount : 保持する古いファイル数（30 → 約30日分保持、超えたら削除）
-    #   encoding    : 日本語が文字化けしないよう UTF-8 を指定
     file_handler = logging.handlers.TimedRotatingFileHandler(
         filename=log_dir / "app.log",
         when="midnight",
         backupCount=30,
         encoding="utf-8",
     )
-    file_handler.setLevel(logging.INFO)   # ファイルには INFO 以上のみ記録する
+    file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
 
-    # ── コンソールハンドラ：StreamHandler ─────────────────────────────────
-    # デフォルトで sys.stderr（標準エラー出力）に書き出すハンドラ。
-    # 開発中にターミナルでリアルタイムにログを確認するために追加する。
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)   # コンソールには DEBUG 以上すべて出力
+    console_handler.setLevel(logging.DEBUG)
     console_handler.setFormatter(formatter)
 
-    # ── ハンドラをロガーに登録 ────────────────────────────────────────────
-    # addHandler() で複数の出力先を同時に追加できる。
-    # 下記の設定後、logger.info("test") を呼ぶと
-    # ファイルとコンソールの両方に同時に出力される。
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
     return logger
 
 
-# モジュール読み込みと同時にロガーを初期化する。
-# モジュール内の全関数からこの変数 `logger` を参照してログを記録する。
 logger = _setup_logger()
 
 
@@ -151,17 +75,7 @@ logger = _setup_logger()
 
 @dataclass(frozen=True)
 class BookStatus:
-    """
-    各サイトの在庫状況を表す不変データクラス。
-
-    frozen=True によりインスタンス作成後の値変更を禁止（イミュータブル設計）。
-    辞書（dict）と違い、属性名が明示されるため IDE の補完・型チェックが効く。
-
-    Attributes:
-        text:      表示テキスト（例: "在庫あり", "なし", "エラー"）
-        css_class: カードのアクセント色 CSS クラス
-        icon:      ステータスアイコン（例: "⭕️", "❌", "⚠️"）
-    """
+    """各サイトの在庫状況を表す不変データクラス。"""
     text: str
     css_class: str
     icon: str
@@ -171,38 +85,38 @@ class BookStatus:
 # 設定・定数
 # ============================================================================
 
-# ── Streamlit ページ設定（スクリプト内で最初に呼ぶ必要がある）──────────────
 st.set_page_config(page_title="Book Finder", layout="wide", page_icon="📚")
 
-# ── HTTP リクエスト設定 ──────────────────────────────────────────────────────
+# HTTP リクエスト設定
 USER_AGENT: str = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/120.0.0.0 Safari/537.36"
+    "Chrome/120.0.0.0 Safari/537.36 "
+    "BookFinder/1.0 (personal-use)"
 )
 HEADERS: Dict[str, str] = {
     "User-Agent": USER_AGENT,
-    "Accept": "application/json",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
 }
-TIMEOUT_SHORT: int = 10   # 秒：通常の GET リクエスト用
-TIMEOUT_MEDIUM: int = 20  # 秒：レスポンスが遅いサイト（ミライブ・各務原BCなど）用
+TIMEOUT_SHORT: int = 10
+TIMEOUT_MEDIUM: int = 20
 
-# ── アプリ設定 ──────────────────────────────────────────────────────────────
+# アプリ設定
 HISTORY_LIMIT: int = 5
-KUSA_BOOKS_KEYWORD: str = "各務原店"  # 各務原BC の店舗検索キーワード
+KUSA_BOOKS_KEYWORD: str = "各務原店"
+# 同一キーワードの再検索で各サイトへ再アクセスしない猶予時間（サーバー負荷軽減）
+CACHE_TTL_SECONDS: int = 600
 
-# ── 在庫ステータス定数 ──────────────────────────────────────────────────────
-# よく使うステータスをモジュールレベルで定義し、関数内で使い回す。
-# BookStatus は frozen=True（不変）なので、定数として安全に共有できる。
+# 在庫ステータス定数
 _S_AVAILABLE = BookStatus("在庫あり", "accent-ok",   "⭕️")
 _S_NONE      = BookStatus("なし",     "accent-ng",   "❌")
 _S_LENDING   = BookStatus("貸出中",   "accent-warn", "⚠️")
 _S_PENDING   = BookStatus("判定保留", "accent-warn", "⚠️")
 _S_ERROR     = BookStatus("エラー",   "accent-warn", "⚠️")
+_S_LINK_ONLY = BookStatus("リンクで確認", "accent-warn", "🔗")
 
-# ── カード背景画像・静的アセット ─────────────────────────────────────────
-# 画像・CSS はすべて static/ 配下に集約（images / css）。
+# 静的アセット
 _APP_DIR: Path = Path(__file__).parent
 _STATIC_DIR: Path = _APP_DIR / "static"
 _IMAGES_DIR: Path = _STATIC_DIR / "images"
@@ -214,12 +128,11 @@ CARD_BG_PATHS: Dict[str, Path] = {
     "tsutaya":  _IMAGES_DIR / "各務原BC.jpg",
 }
 
-# ── 背景画像のパス（松本十畳のみ）────────────────────────────────────────────
 _BG_IMAGE_PATH: Path = _IMAGES_DIR / "松本十畳.jpg"
 
 
 # ============================================================================
-# 背景画像ローダー
+# 画像・CSS ローダー（キャッシュ付き）
 # ============================================================================
 
 @st.cache_resource
@@ -240,20 +153,12 @@ def _mime_for_path(p: Path) -> str:
         return "image/webp"
     if s == ".png":
         return "image/png"
-    if s in (".jpg", ".jpeg"):
-        return "image/jpeg"
     return "image/jpeg"
 
 
 @st.cache_resource
 def _load_card_images_base64() -> Dict[str, str]:
-    """
-    4枚のカード背景画像を読み込み、data URI 文字列の辞書で返す。
-
-    Returns:
-        キーは "gifu" | "kani" | "sanseido" | "tsutaya"。
-        値は "data:image/xxx;base64,..." またはファイルがない場合は空文字列。
-    """
+    """4枚のカード背景画像を data URI 文字列の辞書で返す。"""
     out: Dict[str, str] = {}
     for key, path in CARD_BG_PATHS.items():
         try:
@@ -268,7 +173,7 @@ def _load_card_images_base64() -> Dict[str, str]:
 
 
 # ============================================================================
-# CSS ビルダー
+# CSS ビルダー（キャッシュ付き — Bug1 修正の核心）
 # ============================================================================
 
 _CSS_DIR: Path = _STATIC_DIR / "css"
@@ -284,16 +189,10 @@ _CSS_FILES: tuple[str, ...] = (
 
 def _build_app_css(bg_base64: str) -> str:
     """
-    アプリ全体の CSS を組み立てて返す。
+    アプリ全体の CSS を組み立てて返す（キャッシュ済み）。
 
-    外部 CSS ファイルを読み込み、背景画像を base64 で埋め込む。
-    Streamlit Cloud を含む任意のホスティング環境で画像が確実に表示される。
-
-    Args:
-        bg_base64: base64 エンコード済みの JPEG 文字列（空文字ならグラデーション背景）
-
-    Returns:
-        <style> タグを含む HTML 文字列
+    初回ロード以降はキャッシュから即座に返却されるため、
+    CSS ファイル読み込みの遅延による表示の不安定さを解消する。
     """
     if bg_base64:
         bg_layer = f'url("data:image/jpeg;base64,{bg_base64}")'
@@ -318,20 +217,13 @@ def _build_app_css(bg_base64: str) -> str:
 # ============================================================================
 
 def _init_session_state() -> None:
-    """セッションステートを初期化する（未設定キーのみ処理）。"""
+    """セッションステートを初期化する。"""
     if "search_history" not in st.session_state:
         st.session_state.search_history = []
 
 
 def _add_to_history(keyword: str) -> None:
-    """
-    検索履歴にキーワードを追加する。
-
-    既存のキーワードは先頭に移動し、HISTORY_LIMIT 件を超えた分は削除する。
-
-    Args:
-        keyword: 追加する検索キーワード
-    """
+    """検索履歴にキーワードを追加する（最大 HISTORY_LIMIT 件）。"""
     if not keyword:
         return
     history: list = st.session_state.search_history
@@ -346,21 +238,12 @@ def _add_to_history(keyword: str) -> None:
 # ============================================================================
 
 def check_gifu_lib(keyword: str) -> BookStatus:
-    """
-    メディコス（岐阜市立図書館）の在庫をチェックする。
-
-    Args:
-        keyword: 検索キーワード
-
-    Returns:
-        在庫状況を表す BookStatus
-    """
+    """メディコス（岐阜市立図書館）の在庫をチェックする。"""
     logger.info("メディコスを検索: '%s'", keyword)
     try:
         session = requests.Session()
         session.headers.update(HEADERS)
 
-        # セッション Cookie を取得するためにトップページへアクセス
         session.get(
             "https://www1.gifu-lib.jp/winj/opac/top.do",
             timeout=TIMEOUT_SHORT,
@@ -398,72 +281,20 @@ def check_gifu_lib(keyword: str) -> BookStatus:
 
 
 def check_kani_lib(keyword: str) -> BookStatus:
+    """ミライブ（可児市立図書館）は自動アクセスせず、リンク提示のみ。
+
+    kani-lib.jp の robots.txt は検索パス `/csp` 配下を Disallow しており、
+    2026-05-11 には「サーバ負荷軽減」の注記も追加されている。これを尊重し、
+    在庫の自動判定は行わず、検索結果ページへのリンクだけを提供する。
+    自動判定を復活させる場合はカーリル図書館API（無償・商用可）を使うこと。
+    詳細: docs/scraping_monetization_report.md
     """
-    ミライブ（可児市立図書館）の在庫をチェックする。
-
-    Args:
-        keyword: 検索キーワード
-
-    Returns:
-        在庫状況を表す BookStatus
-    """
-    logger.info("ミライブを検索: '%s'", keyword)
-    try:
-        session = requests.Session()
-        session.headers.update(HEADERS)
-
-        session.get(
-            "https://www.kani-lib.jp/csp/opw/OPW/OPWSRCH1.CSP?DB=LIB&MODE=1",
-            timeout=TIMEOUT_SHORT,
-        )
-
-        res = session.get(
-            "https://www.kani-lib.jp/csp/opw/OPW/OPWSRCHLIST.CSP",
-            params={
-                "text(1)": keyword,
-                "opr(1)":  "OR",
-                "DB":      "LIB",
-                "PID":     "OPWSRCH1",
-                "FLG":     "SEARCH",
-                "MODE":    "1",
-                "SORT":    "-3",
-                "qual(1)": "MZALL",
-            },
-            timeout=TIMEOUT_MEDIUM,
-        )
-        res.encoding = res.apparent_encoding
-
-        if "該当する資料はありません" in res.text or "検索結果 0件" in res.text:
-            logger.info("ミライブ: 該当なし")
-            return _S_NONE
-        if "○ 在架あり" in res.text:
-            logger.info("ミライブ: 在庫あり")
-            return _S_AVAILABLE
-        if "貸出中" in res.text or "予約" in res.text:
-            logger.info("ミライブ: 貸出中")
-            return _S_LENDING
-
-        logger.info("ミライブ: 在庫あり（詳細不明）")
-        return _S_AVAILABLE
-
-    except requests.exceptions.Timeout:
-        logger.warning("ミライブ: タイムアウト (keyword='%s')", keyword)
-        return _S_ERROR
-    except requests.exceptions.RequestException as exc:
-        logger.error("ミライブ: リクエストエラー - %s", exc)
-        return _S_ERROR
+    logger.info("ミライブ: robots.txt 尊重のため自動アクセスなし (keyword='%s')", keyword)
+    return _S_LINK_ONLY
 
 
 def check_sanseido(keyword: str) -> BookStatus:
-    """
-    岐阜駅本屋の在庫をチェックする（書籍のみ。電子書籍は在庫に含めない）。
-
-    Args:
-        keyword: 検索キーワード
-
-    Returns:
-        在庫状況を表す BookStatus
-    """
+    """岐阜駅本屋の在庫をチェックする（書籍のみ。電子書籍は在庫に含めない）。"""
     logger.info("岐阜駅本屋を検索: '%s'", keyword)
     try:
         res = requests.get(
@@ -493,10 +324,9 @@ def check_sanseido(keyword: str) -> BookStatus:
             logger.info("岐阜駅本屋: 該当なし（0件）")
             return _S_NONE
 
-        # 在庫記号: ○=書籍在庫あり, ×=なし, △/▲=電子書籍等（書籍のみの在庫表示のため無視）
+        # 在庫記号: ○=書籍在庫あり, ×=なし, △/▲=電子書籍等
         stock_marks = re.findall(r"在庫：\s*([○×△▲])", res.text)
         if stock_marks:
-            # 書籍（○）が1件でもあれば在庫あり。△・▲は電子書籍のためカウントしない。
             if any(mark == "○" for mark in stock_marks):
                 logger.info("岐阜駅本屋: 在庫あり（書籍）")
                 return _S_AVAILABLE
@@ -518,16 +348,10 @@ def check_sanseido(keyword: str) -> BookStatus:
         return _S_ERROR
 
 
+# ── 各務原BC（TSUTAYA）ヘルパー ──────────────────────────────────────────────
+
 def _extract_first_tsutaya_work_id(html: str) -> Optional[str]:
-    """
-    各務原BC（草叢BOOKS）キーワード検索結果 HTML から1位の workId を抽出する。
-
-    Args:
-        html: 検索結果ページの HTML 文字列
-
-    Returns:
-        workId 文字列。見つからない場合は None。
-    """
+    """検索結果 HTML から1位の workId を抽出する。"""
     try:
         soup = BeautifulSoup(html, "html.parser")
         anchor = soup.find("a", href=re.compile(r"/search/result/select\?"))
@@ -541,15 +365,7 @@ def _extract_first_tsutaya_work_id(html: str) -> Optional[str]:
 
 
 def _extract_tsutaya_product_key(work_id: str) -> Optional[str]:
-    """
-    各務原BC の select ページを開き、productKey（ISBN/JAN）を抽出する。
-
-    Args:
-        work_id: 作品 ID
-
-    Returns:
-        productKey 文字列。見つからない場合は None。
-    """
+    """select ページから productKey（ISBN/JAN）を抽出する。"""
     try:
         res = requests.get(
             "https://store-tsutaya.tsite.jp/search/result/select",
@@ -573,18 +389,7 @@ def _extract_tsutaya_product_key(work_id: str) -> Optional[str]:
 
 
 def _build_tsutaya_stock_url(keyword: str) -> Tuple[str, str]:
-    """
-    各務原BC の検索 URL と在庫確認 URL を生成する。
-
-    在庫 URL の生成に必要な workId・productKey が取得できない場合は
-    フォールバックとして検索 URL を両方の値に使用する。
-
-    Args:
-        keyword: 検索キーワード
-
-    Returns:
-        (search_url, stock_url) のタプル
-    """
+    """検索 URL と在庫確認 URL を生成する。"""
     search_url = (
         "https://store-tsutaya.tsite.jp/search/result/"
         f"?keyword={urllib.parse.quote(keyword)}&itemType=book&limit=20"
@@ -614,15 +419,7 @@ def _build_tsutaya_stock_url(keyword: str) -> Tuple[str, str]:
 
 
 def check_tsutaya(keyword: str) -> Tuple[BookStatus, str]:
-    """
-    各務原BCの在庫をチェックする。
-
-    Args:
-        keyword: 検索キーワード
-
-    Returns:
-        (在庫状況を表す BookStatus, 結果表示 URL) のタプル
-    """
+    """各務原BCの在庫をチェックする。"""
     logger.info("各務原BCを検索: '%s'", keyword)
     search_url, stock_url = _build_tsutaya_stock_url(keyword)
 
@@ -654,21 +451,54 @@ def check_tsutaya(keyword: str) -> Tuple[BookStatus, str]:
         )
 
 
-def check_all_sites(keyword: str) -> Dict[str, BookStatus]:
-    """
-    図書館3館の在庫状況を一括チェックする。
+# ============================================================================
+# 一括検索（並列実行）
+# ============================================================================
 
-    Args:
-        keyword: 検索キーワード
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def check_all_sites(keyword: str) -> Dict[str, object]:
+    """
+    全4サイトの在庫を並列にチェックする。
+
+    ThreadPoolExecutor で4サイトを同時リクエストし、
+    逐次実行に比べて大幅に応答時間を短縮する。
+
+    結果は CACHE_TTL_SECONDS の間キャッシュされ、同一キーワードの
+    再検索（履歴ボタン連打など）で各サイトへ再アクセスしない。
+    そのぶん在庫表示が最大10分ほど古い可能性がある。
 
     Returns:
-        サイトキーと BookStatus のマッピング辞書
+        {
+            "gifu": BookStatus,
+            "kani": BookStatus,
+            "sanseido": BookStatus,
+            "tsutaya": (BookStatus, url),
+        }
     """
-    return {
-        "gifu":     check_gifu_lib(keyword),
-        "kani":     check_kani_lib(keyword),
-        "sanseido": check_sanseido(keyword),
-    }
+    results: Dict[str, object] = {}
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(check_gifu_lib, keyword): "gifu",
+            executor.submit(check_kani_lib, keyword): "kani",
+            executor.submit(check_sanseido, keyword): "sanseido",
+            executor.submit(check_tsutaya, keyword): "tsutaya",
+        }
+        for future in as_completed(futures):
+            site_key = futures[future]
+            try:
+                results[site_key] = future.result()
+            except Exception as exc:
+                logger.error("%s: 予期しないエラー - %s", site_key, exc)
+                if site_key == "tsutaya":
+                    results[site_key] = (
+                        _S_ERROR,
+                        "https://store-tsutaya.tsite.jp/search/?sheader_item-search",
+                    )
+                else:
+                    results[site_key] = _S_ERROR
+
+    return results
 
 
 # ============================================================================
@@ -723,8 +553,11 @@ def build_sanseido_url(keyword: str) -> str:
 
 
 def build_amazon_url(keyword: str) -> str:
-    """Amazon の検索 URL を生成する。"""
-    return f"https://www.amazon.co.jp/s?k={urllib.parse.quote(keyword)}"
+    """Amazon の書籍検索 URL を生成する。"""
+    return (
+        "https://www.amazon.co.jp/s?"
+        + urllib.parse.urlencode({"k": keyword, "i": "stripbooks"})
+    )
 
 
 # ============================================================================
@@ -745,24 +578,8 @@ def _create_result_card(
     url: str,
     bg_image_url: str = "",
 ) -> str:
-    """
-    検索結果カードの HTML を生成する。
-
-    背景画像 + 半透明オーバーレイ + コンテンツの 3 層構造。
-    bg_image_url が空の場合はグラデーション背景にフォールバックする。
-
-    Args:
-        site_name:    サイト名
-        icon:         サイトアイコン文字
-        status:       在庫状況
-        url:          「結果を開く」リンク先 URL
-        bg_image_url: カード背景画像の URL（省略可）
-
-    Returns:
-        HTML 文字列
-    """
+    """検索結果カードの HTML を生成する。"""
     pill_class = _PILL_CLASS_MAP.get(status.css_class, "pill-warn")
-    # data URI の場合は url('...') で囲む（引用符のエスケープ回避）
     if bg_image_url:
         bg_style = f"background-image: url('{bg_image_url}');"
     else:
@@ -787,24 +604,97 @@ def _create_result_card(
 
 
 def _render_search_history() -> None:
-    """検索履歴ボタンを表示する。履歴がない場合は何も表示しない。"""
+    """検索履歴ボタンを表示する。"""
     if not st.session_state.search_history:
         return
     st.caption("🕒 検索履歴:")
     cols = st.columns(HISTORY_LIMIT)
     for i, hist_kw in enumerate(st.session_state.search_history[:HISTORY_LIMIT]):
         if cols[i].button(hist_kw, key=f"h_{i}", use_container_width=True):
-            st.session_state.keyword_input = hist_kw
+            # keyword_input はウィジェット生成後に直接書き換えられない
+            # （StreamlitAPIException になる）ため、次回 run の生成前に反映する
+            st.session_state.pending_keyword = hist_kw
             st.rerun()
 
 
-def _render_search_results(keyword: str) -> None:
+def _render_amazon_button() -> None:
     """
-    検索を実行し、結果カードを表示する。
+    Amazon 検索ボタンを components.html で描画する（Bug2 修正）。
 
-    Args:
-        keyword: 検索キーワード
+    Streamlit の st.markdown では JavaScript が除去されるため、
+    components.html を使い、クリック時に親ドキュメントの入力欄から
+    リアルタイムにキーワードを取得して Amazon URL を構築する。
+    これにより、Enter キーを押さずに直接ボタンをクリックしても
+    入力中のキーワードが正しく反映される。
     """
+    components.html(
+        """
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { background: transparent !important; }
+            a.btn-amazon {
+                display: flex !important;
+                width: 100% !important;
+                text-align: center !important;
+                color: #0C0800 !important;
+                text-decoration: none !important;
+                border-radius: 14px !important;
+                font-weight: 900 !important;
+                padding: 0.75rem 1rem !important;
+                min-height: 50px !important;
+                align-items: center !important;
+                justify-content: center !important;
+                box-shadow: 0 10px 28px rgba(52, 211, 153, 0.28) !important;
+                transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+                line-height: 1.4 !important;
+                background: linear-gradient(135deg, #34d399 0%, #10b981 100%) !important;
+                border: none !important;
+                margin: 0 !important;
+                letter-spacing: 0.01em !important;
+                font-size: 0.97rem !important;
+                cursor: pointer;
+                font-family: ui-sans-serif, system-ui, -apple-system,
+                             "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            }
+            a.btn-amazon:hover {
+                transform: translateY(-2px) !important;
+                box-shadow: 0 16px 36px rgba(52, 211, 153, 0.38) !important;
+                filter: brightness(1.06) !important;
+                color: #0C0800 !important;
+            }
+        </style>
+        <a href="#" class="btn-amazon" onclick="
+            var inputs = window.parent.document.querySelectorAll(
+                'input[type=text], input[aria-label]'
+            );
+            var kw = '';
+            for (var i = 0; i < inputs.length; i++) {
+                if (inputs[i].value && inputs[i].value.trim()) {
+                    kw = inputs[i].value.trim();
+                    break;
+                }
+            }
+            if (kw) {
+                window.open(
+                    'https://www.amazon.co.jp/s?k='
+                    + encodeURIComponent(kw)
+                    + '&i=stripbooks',
+                    '_blank'
+                );
+            } else {
+                window.parent.document.querySelectorAll(
+                    'input[type=text], input[aria-label]'
+                )[0].focus();
+            }
+            return false;
+        ">📦 Amazonで本を探す ↗</a>
+        """,
+        height=54,
+    )
+
+
+def _render_search_results(keyword: str) -> None:
+    """検索を実行し、結果カードを表示する。"""
     st.subheader(f"「{keyword}」の検索結果")
     logger.info("検索開始: keyword='%s'", keyword)
 
@@ -824,25 +714,44 @@ def _render_search_results(keyword: str) -> None:
         unsafe_allow_html=True,
     )
 
-    status = check_all_sites(keyword)
-    tsutaya_status, tsutaya_url = check_tsutaya(keyword)
+    # 全4サイトを並列検索（TTL キャッシュ付き）
+    results = check_all_sites(keyword)
+
+    # 全サイトがエラー（ネットワーク断など）の結果は TTL の間残さず、
+    # 次回の検索で再試行できるようにする
+    all_statuses = [
+        results["gifu"],
+        results["kani"],
+        results["sanseido"],
+        results["tsutaya"][0],
+    ]
+    if all(s == _S_ERROR for s in all_statuses):
+        try:
+            check_all_sites.clear(keyword)
+        except Exception:
+            logger.warning("キャッシュクリアに失敗（無視して続行）")
 
     loader.empty()
+
+    # tsutaya は (BookStatus, url) のタプル
+    tsutaya_status, tsutaya_url = results["tsutaya"]
+    gifu_status = results["gifu"]
+    kani_status = results["kani"]
+    sanseido_status = results["sanseido"]
 
     card_images = _load_card_images_base64()
     logger.info(
         "検索完了: メディコス=%s ミライブ=%s 岐阜駅本屋=%s 各務原BC=%s",
-        status["gifu"].text,
-        status["kani"].text,
-        status["sanseido"].text,
+        gifu_status.text,
+        kani_status.text,
+        sanseido_status.text,
         tsutaya_status.text,
     )
 
-    # 4枚のカードを1つのグリッドで同時表示（Streamlit columns による段階表示を回避）
     cards_html = (
-        _create_result_card("メディコス", "🏢", status["gifu"], build_gifu_url(keyword), card_images["gifu"])
-        + _create_result_card("ミライブ", "🌲", status["kani"], build_kani_url(keyword), card_images["kani"])
-        + _create_result_card("岐阜駅本屋", "📖", status["sanseido"], build_sanseido_url(keyword), card_images["sanseido"])
+        _create_result_card("メディコス", "🏢", gifu_status, build_gifu_url(keyword), card_images["gifu"])
+        + _create_result_card("ミライブ", "🌲", kani_status, build_kani_url(keyword), card_images["kani"])
+        + _create_result_card("岐阜駅本屋", "📖", sanseido_status, build_sanseido_url(keyword), card_images["sanseido"])
         + _create_result_card("各務原BC", "☕", tsutaya_status, tsutaya_url, card_images["tsutaya"])
     )
     st.markdown(
@@ -859,10 +768,11 @@ def main() -> None:
     """Streamlit アプリのエントリーポイント。"""
     _init_session_state()
 
+    # CSS を先頭で注入（キャッシュ済みのため即座に反映）
     bg_base64 = _load_bg_base64()
     st.markdown(_build_app_css(bg_base64), unsafe_allow_html=True)
 
-    # ── ヒーローセクション（本＋虫眼鏡アイコンはレンズが右上向き）────────────
+    # ── ヒーローセクション ────────────────────────────────────────────────
     st.markdown(
         """
         <div class="hero-section">
@@ -905,7 +815,7 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    # ── マイページリンク（メディコス・ミライブのログインへ）────────────────
+    # ── マイページリンク ──────────────────────────────────────────────────
     st.markdown(
         """
         <div class="mypage-links">
@@ -923,6 +833,11 @@ def main() -> None:
     )
 
     # ── 検索エリア ────────────────────────────────────────────────────────
+    # 履歴ボタンで選ばれたキーワードを、text_input 生成前に反映する
+    pending = st.session_state.pop("pending_keyword", None)
+    if pending is not None:
+        st.session_state.keyword_input = pending
+
     st.markdown("### 🔍 キーワード入力")
     keyword_input: str = st.text_input(
         "キーワード",
@@ -943,17 +858,7 @@ def main() -> None:
         )
 
     with col_amazon:
-        amazon_url = (
-            build_amazon_url(keyword_input)
-            if keyword_input
-            else "https://www.amazon.co.jp/s?k="
-        )
-        st.markdown(
-            f'<a href="{amazon_url}" target="_blank" rel="noopener noreferrer" class="btn-amazon">'
-            f"📦 Amazonで本を探す ↗"
-            f"</a>",
-            unsafe_allow_html=True,
-        )
+        _render_amazon_button()
 
     st.markdown("---")
 
