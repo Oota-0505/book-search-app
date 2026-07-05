@@ -8,8 +8,9 @@ env/
 venv/
 .venv
 
-# ログ（検索キーワードが含まれるためコミットしない）
+# ログ・検索履歴（検索キーワードが含まれるためコミットしない）
 logs/
+book_search_app/data/
 
 # Streamlit
 # .streamlit/config.toml はコミットする（デプロイ設定のため）

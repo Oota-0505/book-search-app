@@ -9,6 +9,7 @@ Streamlit アプリケーション
 # 標準ライブラリ
 # ============================================================================
 import base64
+import json
 import logging
 import logging.handlers
 import re
@@ -128,6 +129,10 @@ CARD_BG_PATHS: Dict[str, Path] = {
     "tsutaya":  _IMAGES_DIR / "各務原BC.jpg",
 }
 
+# 検索履歴の永続化先（アプリ再起動後も直近の検索を復元するため）
+_DATA_DIR: Path = _APP_DIR / "data"
+_HISTORY_FILE: Path = _DATA_DIR / "search_history.json"
+
 _BG_IMAGE_PATH: Path = _IMAGES_DIR / "松本十畳.jpg"
 
 
@@ -216,21 +221,47 @@ def _build_app_css(bg_base64: str) -> str:
 # ユーティリティ関数
 # ============================================================================
 
+def _load_history_from_disk() -> list:
+    """検索履歴を JSON ファイルから読み込む（ファイル未作成時は空リスト）。"""
+    try:
+        with open(_HISTORY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return [str(kw) for kw in data][:HISTORY_LIMIT]
+    except FileNotFoundError:
+        pass
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("検索履歴ファイルの読み込みに失敗: %s", exc)
+    return []
+
+
+def _save_history_to_disk(history: list) -> None:
+    """検索履歴を JSON ファイルに保存する。"""
+    try:
+        _DATA_DIR.mkdir(exist_ok=True)
+        with open(_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except OSError as exc:
+        logger.warning("検索履歴ファイルの保存に失敗: %s", exc)
+
+
 def _init_session_state() -> None:
-    """セッションステートを初期化する。"""
+    """セッションステートを初期化する（前回起動時の検索履歴を復元）。"""
     if "search_history" not in st.session_state:
-        st.session_state.search_history = []
+        st.session_state.search_history = _load_history_from_disk()
 
 
 def _add_to_history(keyword: str) -> None:
-    """検索履歴にキーワードを追加する（最大 HISTORY_LIMIT 件）。"""
+    """検索履歴にキーワードを追加し、JSON ファイルにも永続化する（最大 HISTORY_LIMIT 件）。"""
     if not keyword:
         return
     history: list = st.session_state.search_history
     if keyword in history:
         history.remove(keyword)
     history.insert(0, keyword)
-    st.session_state.search_history = history[:HISTORY_LIMIT]
+    history = history[:HISTORY_LIMIT]
+    st.session_state.search_history = history
+    _save_history_to_disk(history)
 
 
 # ============================================================================
