@@ -34,3 +34,7 @@ debug_*.py
 
 # 仮想環境
 .venv/
+
+# テスト・Lint のキャッシュ
+.pytest_cache/
+.ruff_cache/
