@@ -27,9 +27,9 @@ book_search_app/data/
 .DS_Store
 Thumbs.db
 
-# テストファイル
-test_*.py
-debug_*.py
+# ルート直下の使い捨てスクリプト（tests/ 配下の正式なテストは除外しない）
+/test_*.py
+/debug_*.py
 
 
 # 仮想環境
