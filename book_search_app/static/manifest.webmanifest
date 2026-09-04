@@ -1,0 +1,42 @@
+{
+    "name": "Book Finder — 岐阜の本をひとまとめに",
+    "short_name": "BookFinder",
+    "description": "岐阜の図書館・書店の在庫をまとめて検索できるアプリ",
+    "lang": "ja",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#0C0820",
+    "theme_color": "#0C0820",
+    "categories": [
+        "books",
+        "utilities"
+    ],
+    "icons": [
+        {
+            "src": "/static/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/static/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/static/icons/maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/static/icons/maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>オフライン — Book Finder</title>
+<meta name="theme-color" content="#0C0820">
+<!--
+  この画面は「通信できない状況」で表示される。
+  外部CSS・Webフォント・画像を一切読み込まないこと（読めないため）。
+-->
+<style>
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1.5rem;
+        background: linear-gradient(180deg, #0C0820 0%, #14102A 100%);
+        color: #F5F0E8;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Hiragino Sans",
+                     "Noto Sans JP", "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.7;
+        text-align: center;
+    }
+    .box { max-width: 30rem; }
+    .mark { font-size: 3.5rem; line-height: 1; margin-bottom: 1rem; }
+    h1 { font-size: 1.6rem; font-weight: 800; margin: 0 0 0.75rem; letter-spacing: -0.02em; }
+    p  { margin: 0 0 1.5rem; color: rgba(245, 240, 232, 0.65); font-size: 0.98rem; }
+    button {
+        min-height: 50px;
+        padding: 0.75rem 2rem;
+        border: none;
+        border-radius: 14px;
+        background: linear-gradient(90deg, #C8933E 0%, #E8B55A 100%);
+        color: #120A00;
+        font-family: inherit;
+        font-size: 0.97rem;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+        cursor: pointer;
+        box-shadow: 0 10px 28px rgba(200, 147, 62, 0.35);
+    }
+    .hint {
+        margin: 1.75rem 0 0;
+        font-size: 0.85rem;
+        color: rgba(245, 240, 232, 0.42);
+    }
+</style>
+</head>
+<body>
+<div class="box">
+    <div class="mark">📚</div>
+    <h1>オフラインです</h1>
+    <p>
+        Book Finder は図書館・書店のサイトに問い合わせて在庫を調べるため、
+        インターネット接続が必要です。<br>
+        通信状況をご確認のうえ、もう一度お試しください。
+    </p>
+    <button type="button" onclick="location.replace('/')">再読み込み</button>
+    <p class="hint">接続が戻ると自動で画面に戻ります</p>
+</div>
+<script>
+    // 接続が戻ったら自動で本体へ戻す
+    window.addEventListener("online", () => location.replace("/"));
+</script>
+</body>
+</html>

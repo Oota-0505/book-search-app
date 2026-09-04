@@ -31,3 +31,6 @@ Thumbs.db
 test_*.py
 debug_*.py
 
+
+# 仮想環境
+.venv/
