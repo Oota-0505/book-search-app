@@ -267,6 +267,73 @@ Gmail 側で既読にすれば自然に減ります。
 
 ---
 
+## 6.5. ⚠️ 通知タップで外部サイトへ飛ばせるか → iOSでは不可
+
+「通知をタップしたら、その足で図書館の予約ページを開きたい」という設計は、
+**iOS では期待どおりに動きません**。調べた範囲では既知の制約です。
+
+| 挙動 | Android | iOS |
+|---|---|---|
+| `clients.openWindow(外部URL)` | 動く | **動かない**（別オリジンには `null` を返す） |
+| 通知タップ後 | 指定URLが開く | **アプリのトップが開くだけ** |
+
+Apple の Developer Forums にも複数報告があり、解決策は出ていません。
+アプリを明示的に閉じていた場合はルートURLが読み込まれ、
+背景に残っていた場合は「前に見ていた画面のまま」開きます。
+
+### 回避策：同一オリジンへ飛ばして、アプリ側で案内する
+
+**同一オリジンへの遷移は動きます**（`clients.matchAll()` → `client.navigate()`）。
+そこで、飛び先をアプリ自身にして、開いた画面で普通のリンクを出す形にします。
+
+```
+[通知をタップ]
+    ↓  同一オリジンなので確実に動く
+[Book Finder が /?from=push で開く]
+    ↓  画面に大きく表示
+[📚 予約本が届いています → メディコスのマイページを開く]
+    ↓  ただの <a> なのでタップすれば必ず開く
+[図書館のマイページ]
+```
+
+タップが1回増えますが、**確実に動き、Androidでも同じ動作になる**ので、
+結果的にこちらのほうが素直です。
+
+---
+
+## 6.6. Laravel（仕事）への転用について
+
+Web Push は**フレームワークの機能ではなくブラウザの標準仕様**なので、
+ここで作ったものは**そのまま Laravel の予習になります**。
+
+とくに、**ハマりどころはすべてフレームワークの外側にあります**。
+
+| 要素 | この Python 版 | Laravel 版 | 転用度 |
+|---|---|---|---|
+| Service Worker の `push` / `notificationclick` | 自分で書く | **同じものをそのまま使う** | **100%** |
+| フロントの購読処理（`pushManager.subscribe`） | 自分で書く | **同じ** | **100%** |
+| 通知許可の取り方（クリック内で要求） | 同じ | **同じ** | **100%** |
+| iOS の制約（ホーム画面必須／サイレント禁止／openWindow不可） | 同じ | **同じ** | **100%** |
+| VAPID 鍵の生成 | `py-vapid` | `php artisan webpush:vapid` | 概念は同じ |
+| 送信ライブラリ | `pywebpush` | `minishlink/web-push` | 概念は同じ |
+| 購読情報の保存 | 自前 | `HasPushSubscriptions` trait + `push_subscriptions` テーブル | Laravelが用意 |
+| 通知の組み立て | 自前 | `Notification` + `WebPushChannel` / `WebPushMessage` | Laravelが用意 |
+| 期限切れ購読の掃除 | 自前 | `MessageSentReport` で自動削除 | Laravelが用意 |
+
+Laravel 側は [`laravel-notification-channels/webpush`](https://github.com/laravel-notification-channels/webpush) を使うのが定番で、
+中身は `minishlink/web-push` のラッパーです。
+
+> **仕事で必ず効いてくる注意点**
+> このパッケージでも、**Safari / iOS を相手にするなら `.env` に `VAPID_SUBJECT` が必須**です。
+> 値は HTTPS URL か `mailto:` でなければならず、それ以外だと Apple が **403** を返します。
+> §2 の ⑤ とまったく同じ話で、**言語が変わっても同じ場所で詰まります**。
+
+つまり Python 側で一度通しておけば、Laravel では
+**「保存と送信の書き方が変わるだけ」**になります。
+
+
+---
+
 ## 7. おすすめの進め方
 
 1. **先にドメインを決める**（Tailscale のままか、Cloud Run へ移すか）
@@ -290,3 +357,6 @@ Gmail 側で既読にすれば自然に減ります。
 - [Platforms with a real free tier for developers in 2026 | Render](https://render.com/articles/platforms-with-a-real-free-tier-for-developers-in-2026)
 - [Koyeb Free Tier 2026: Pricing, Limits & Credit Card](https://www.srvrlss.io/provider/koyeb/)
 - [Google Apps Script の制限値ガイド](https://www.yoshidumi.co.jp/collaboration-lab/gas-quotas-and-solutions)
+- [laravel-notification-channels/webpush | GitHub](https://github.com/laravel-notification-channels/webpush)
+- [Clients: openWindow() method | MDN](https://developer.mozilla.org/en-US/docs/Web/API/Clients/openWindow)
+- [Issue with PWA Push Notifications: Unable to Redirect to Specified URL on iOS | Apple Developer Forums](https://developer.apple.com/forums/thread/733604)
