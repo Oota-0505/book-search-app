@@ -12,7 +12,7 @@
 ```
 Phase A  Web Push をローカルで作る      ← 学びの9割はここ。Laravelにそのまま効く
 Phase B  公開に耐える形に整える（認証）  ← ここを飛ばすと「誰でも見れる」状態になる
-Phase C  Cloud Run へデプロイ           ← Mac 不要になる
+Phase C  Cloudflare Workers へデプロイ  ← Mac 不要になる
 Phase D  スマホで再登録・再購読          ← 1分で終わる
 Phase E  Gmail と繋ぐ                   ← 実用化
 ```
@@ -678,62 +678,49 @@ Cloud Run はコンテナが消えるとファイルも消えます。
 
 ---
 
-# Phase C — Cloud Run へデプロイ
+# Phase C — Cloudflare Workers へデプロイ
 
-## C-1. Dockerfile
+> **⚠️ 設計変更あり。** デプロイ先は Cloud Run ではなく **Cloudflare Workers** です。
+> 詳細な設計と、その前にやるコード改修は
+> [`workers_migration_plan.md`](workers_migration_plan.md) を参照してください。
 
-```dockerfile
-FROM python:3.12-slim
+## C-0. まず hello world で CPU 時間を実測する（必須）
 
-WORKDIR /app
-ENV PYTHONUNBUFFERED=1
+Workers 無料プランは **CPU 10ms/リクエスト** が上限です。
+Pyodide の起動CPUが算入されるかが未検証なので、**ここで確かめてから進みます**。
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY book_search_app ./book_search_app
-COPY run.py .
-
-CMD ["python", "run.py", "--host", "0.0.0.0"]
+```bash
+npm install -g wrangler
+wrangler login
+wrangler tail      # CPU時間を観測する
 ```
 
-`.dockerignore`：
+- [ ] 起動CPUが10msに収まることを確認した（超えるなら Cloud Run に戻る判断）
 
-```
-.venv
-.git
-docs
-tests
-tools
-logs
-book_search_app/data
-__pycache__
-```
+## C-1. CPU を削る改修（ローカルで完結）
 
-- [ ] 完了
+実測で BeautifulSoup が **11.05ms**（単体で上限超過）でした。正規表現に置き換えると
+**0.014ms**（790倍速・結果は完全一致）になります。
 
-## C-2. 購読情報の保存先を変える
+- [ ] `providers.py` の BeautifulSoup を正規表現に置き換え、依存から `beautifulsoup4` を外す
+- [ ] `res.apparent_encoding`（1.77ms）をやめ、サイトごとに文字コードを固定
+- [ ] テスト22件が通ることを確認
 
-`push_subscriptions.json` はコンテナと一緒に消えます。**Firestore に移してください**（無料枠内）。
-`push.py` の `_load` / `_save` だけを差し替えれば済む設計にしてあります。
+## C-2. Workers 対応の書き換え（ローカルで完結）
 
-- [ ] 完了
+- [ ] `requests` → `httpx`（async）
+- [ ] `ThreadPoolExecutor` → `asyncio.gather`
+- [ ] 静的ファイルを Workers Static Assets へ
+- [ ] プッシュ購読の保存を Workers KV へ
 
 ## C-3. デプロイ
 
 ```bash
-gcloud run deploy book-finder --source . --region asia-northeast1 \
-  --allow-unauthenticated \
-  --set-env-vars "BOOKFINDER_PASSWORD=...,BOOKFINDER_SECRET=..."
+wrangler deploy
 ```
 
-> `--allow-unauthenticated` は「Google の認証を使わない」という意味です。
-> **アプリ側の認証（B-1）は効いています。** ここを外すとスマホから使いにくくなります。
-
 - [ ] デプロイできた
-- [ ] **予算アラートを 0 円 / 100 円で設定した**
-
----
+- [ ] スマホから開けた
 
 # Phase D — スマホで登録し直す
 

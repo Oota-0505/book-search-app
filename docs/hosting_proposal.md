@@ -1,5 +1,11 @@
 # 外出先でスマホ単独で使うための構成案（提案書）
 
+> **⚠️ 2026-09-05 追記: デプロイ先は Cloudflare Workers に決定しました。**
+> 本書の「Cloud Run が本命」という結論は、改訂版
+> [`workers_migration_plan.md`](workers_migration_plan.md) に差し替えられています。
+> 決め手は「カード登録が不要」「コールドスタートがミリ秒」「使い慣れている」の3点です。
+> ただし本書の **§1（公開するなら認証が必須）と §4（ミライブの扱い）はそのまま有効**です。
+
 - 作成: 2026-09-05
 - 状態: **提案のみ。実装は未着手**
 - 前提: 2026-09 に Streamlit → FastAPI へ移行済み（[`migration_report.md`](migration_report.md)）
