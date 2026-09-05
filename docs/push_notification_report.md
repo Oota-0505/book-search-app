@@ -20,6 +20,7 @@
 | アイコンに「1」「2」を出す | ✅ | Badging API が iOS 16.4+ で使える。**Service Worker の push イベントから更新できる** |
 | Gmail の到着を検知する | ✅ | Gmail API / Google Apps Script。**自分のメールを読むだけ**なので図書館サイトには一切触れない |
 | 常に通知が届く | ⚠️ | **送信側が常時起動している必要がある**。今の構成では Mac 依存 |
+| 費用 | ✅ | **全部0円**。Apple Developer Program（年$99）も不要（→ §4.5） |
 
 ### 一番いいのは「ミライブでも使える」こと
 
@@ -175,6 +176,54 @@ Apps Script 側で「まだ通知していないメール」を記録してお�
 
 ---
 
+## 4.5. 費用（全部いくらかかるか）
+
+### 結論：**すべて0円で実現できます。**
+
+見落としやすいのが1行目です。**iOS のプッシュ通知に Apple Developer Program（年 $99）は不要**です。
+ネイティブアプリの APNs とは違い、Web Push は開発者登録なしで使えます。
+
+| 項目 | 費用 | カード登録 |
+|---|---|---|
+| Apple Developer Program | **不要**（年$99はかからない） | — |
+| Apple のプッシュ配信サービス | 0円 | 不要 |
+| `pywebpush` / `py-vapid`（OSS） | 0円 | 不要 |
+| Google Apps Script | 0円 | 不要 |
+| Gmail の読み取り | 0円 | 不要 |
+| Tailscale（個人プラン） | 0円 | 不要 |
+| **通知送信の置き場所** ↓ | | |
+| └ 今の Mac のまま | 0円 | 不要 |
+| └ Render 無料枠 | 0円 | **不要** |
+| └ Koyeb 無料枠 | 0円 | 原則不要 |
+| └ Google Cloud Run | 0円（無料枠内） | **必要**（請求先アカウントの登録が要る。無料枠内なら請求は発生しないが、カード登録自体を避けたい場合は上の2つ） |
+
+### カード登録すら避けたい場合の構成
+
+ここで効いてくる考え方があります。**通知を送る部分は、速さが要らない**のです。
+
+| | 求められること | 遅くていいか |
+|---|---|---|
+| 検索アプリ本体 | 開いた瞬間に表示 | ❌ 速さが命 |
+| 通知の送信 | 月に数回、裏で動くだけ | ✅ **1分待っても誰も困らない** |
+
+Render の無料枠は「15分でスリープし、復帰に30〜60秒かかる」ため
+**アプリ本体には向きません**。しかし**通知の送信役としては何の問題もありません**。
+
+さらに、Apps Script は**先に Gmail を調べて、該当メールが無ければ HTTP を叩きません**。
+つまり通信が発生するのは「実際に予約本が届いたとき」だけです。
+
+```
+15分ごと: GASがGmailを検索（数秒・Google内で完結）
+   ├─ 該当なし → 何もしない          ← ほぼ毎回こっち
+   └─ 該当あり → 送信サーバーを起こす ← 月に数回。60秒待ってもOK
+```
+
+この形なら **Apps Script の無料枠（トリガー合計90分/日）にも余裕で収まり**、
+カード登録も一切不要で、Mac が寝ていても通知が届きます。
+
+
+---
+
 ## 5. 実装の見積もり
 
 | # | 作業 | 規模 |
@@ -237,4 +286,7 @@ Gmail 側で既読にすれば自然に減ります。
 - [PWA Push Notifications on iOS in 2026: What Really Works](https://webscraft.org/blog/pwa-pushspovischennya-na-ios-u-2026-scho-realno-pratsyuye?lang=en)
 - [webpush-ios-example | GitHub](https://github.com/andreinwald/webpush-ios-example)
 - [Configure push notifications in Gmail API | Google for Developers](https://developers.google.com/workspace/gmail/api/guides/push)
+- [iOS Now Supports Web Push Notifications | MagicBell](https://www.magicbell.com/blog/ios-now-supports-web-push-notifications-and-why-you-should-care)
+- [Platforms with a real free tier for developers in 2026 | Render](https://render.com/articles/platforms-with-a-real-free-tier-for-developers-in-2026)
+- [Koyeb Free Tier 2026: Pricing, Limits & Credit Card](https://www.srvrlss.io/provider/koyeb/)
 - [Google Apps Script の制限値ガイド](https://www.yoshidumi.co.jp/collaboration-lab/gas-quotas-and-solutions)
