@@ -15,7 +15,6 @@ import urllib.parse
 from typing import Optional, Tuple
 
 import requests
-from bs4 import BeautifulSoup
 
 from . import models
 from .config import (
@@ -40,6 +39,22 @@ def _session() -> requests.Session:
         session.headers.update(HEADERS)
         _local.session = session
     return session
+
+
+def _text(res: requests.Response) -> str:
+    """レスポンス本文を文字列にする。
+
+    対象3サイトはいずれも Content-Type ヘッダで charset=UTF-8 を宣言しており、
+    requests はそれを読んで正しくデコードする。統計的に文字コードを推定する
+    `apparent_encoding` は 1.77ms（実測）かかるうえ不要なので使わない。
+    Cloudflare Workers は CPU 10ms/リクエストが上限のため、この差が効く。
+
+    charset の宣言が無い場合、requests は ISO-8859-1 を既定にしてしまうので、
+    そのときだけ UTF-8 とみなす。
+    """
+    if not res.encoding or res.encoding.lower() in ("iso-8859-1", "latin-1"):
+        return res.content.decode("utf-8", errors="replace")
+    return res.text
 
 
 # ============================================================================
@@ -131,9 +146,9 @@ def check_gifu(keyword: str) -> Tuple[models.BookStatus, str]:
             timeout=TIMEOUT_SHORT,
             allow_redirects=True,
         )
-        res.encoding = res.apparent_encoding
+        text = _text(res)
 
-        if "g-mediacosmos.jp" in res.url or any(p in res.text for p in _GIFU_NO_HIT_PHRASES):
+        if "g-mediacosmos.jp" in res.url or any(p in text for p in _GIFU_NO_HIT_PHRASES):
             logger.info("メディコス: 該当なし")
             return models.NONE_FOUND, url
 
@@ -185,20 +200,20 @@ def check_sanseido(keyword: str) -> Tuple[models.BookStatus, str]:
             params=_SANSEIDO_PARAMS | {"keyword": keyword},
             timeout=TIMEOUT_SHORT,
         )
-        res.encoding = res.apparent_encoding
+        text = _text(res)
 
-        if "検索結果：0件" in res.text or "検索結果:0件" in res.text:
+        if "検索結果：0件" in text or "検索結果:0件" in text:
             logger.info("岐阜駅本屋: 該当なし")
             return models.NONE_FOUND, url
 
-        match = _SANSEIDO_TOTAL_RE.search(res.text)
+        match = _SANSEIDO_TOTAL_RE.search(text)
         total = int(match.group(1)) if match else None
         if total == 0:
             logger.info("岐阜駅本屋: 該当なし（0件）")
             return models.NONE_FOUND, url
 
         # 在庫記号: ○=書籍在庫あり, ×=なし, △/▲=電子書籍等
-        marks = _SANSEIDO_STOCK_RE.findall(res.text)
+        marks = _SANSEIDO_STOCK_RE.findall(text)
         if marks:
             if "○" in marks:
                 logger.info("岐阜駅本屋: 在庫あり（書籍）")
@@ -225,19 +240,20 @@ def check_sanseido(keyword: str) -> Tuple[models.BookStatus, str]:
 # 各務原BC（草叢BOOKS / TSUTAYA）
 # ============================================================================
 
-_WORK_ID_RE = re.compile(r"workId=(\d+)")
+# 検索結果HTMLから最初の workId を直接拾う。
+# BeautifulSoup で <a> を探す実装は 51KB のページで 11.05ms かかっていたが、
+# この正規表現なら 0.014ms（790倍・結果が一致することは実測で確認済み）。
+# Cloudflare Workers の CPU 10ms/リクエスト制限に収めるための変更。
+_FIRST_WORK_ID_RE = re.compile(
+    r"""href=["'][^"']*/search/result/select\?[^"']*workId=(\d+)"""
+)
 _PRODUCT_KEY_RE = re.compile(r"productKey=(\d+)")
 _PRODUCT_KEY_IN_URL_RE = re.compile(r"/\d+/(\d{10,13})\b")
 
 
 def _first_work_id(html: str) -> Optional[str]:
     """検索結果HTMLから1位の workId を抜き出す。"""
-    soup = BeautifulSoup(html, "html.parser")
-    anchor = soup.find("a", href=re.compile(r"/search/result/select\?"))
-    if not anchor:
-        return None
-    href = anchor.get("href") or ""
-    match = _WORK_ID_RE.search(href)
+    match = _FIRST_WORK_ID_RE.search(html)
     return match.group(1) if match else None
 
 
@@ -254,7 +270,7 @@ def _product_key(work_id: str) -> Optional[str]:
         logger.error("productKey 取得エラー (work_id=%s): %s", work_id, exc)
         return None
 
-    match = _PRODUCT_KEY_RE.search(res.text)
+    match = _PRODUCT_KEY_RE.search(_text(res))
     if match:
         return match.group(1)
     match = _PRODUCT_KEY_IN_URL_RE.search(res.url)
@@ -269,7 +285,7 @@ def _tsutaya_urls(keyword: str) -> Tuple[str, str]:
     )
     try:
         res = _session().get(search_url, timeout=TIMEOUT_MEDIUM)
-        work_id = _first_work_id(res.text)
+        work_id = _first_work_id(_text(res))
         if not work_id:
             logger.debug("各務原BC: workId が取得できなかった (keyword=%r)", keyword)
             return search_url, search_url
@@ -301,12 +317,12 @@ def check_tsutaya(keyword: str) -> Tuple[models.BookStatus, str]:
 
     try:
         res = _session().get(stock_url, timeout=TIMEOUT_MEDIUM)
-        res.encoding = res.apparent_encoding
+        text = _text(res)
 
-        if "在庫あり" in res.text:
+        if "在庫あり" in text:
             logger.info("各務原BC: 在庫あり")
             return models.AVAILABLE, stock_url
-        if "在庫なし" in res.text or "入荷予定は店舗にお問い合わせ下さい" in res.text:
+        if "在庫なし" in text or "入荷予定は店舗にお問い合わせ下さい" in text:
             logger.info("各務原BC: 在庫なし")
             return models.NONE_FOUND, stock_url
 

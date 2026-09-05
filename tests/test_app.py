@@ -134,6 +134,44 @@ def test_ttl_cache_expires() -> None:
     assert cache.get("k") is None
 
 
+# ── HTML解析（Cloudflare Workers の CPU 10ms 制限に収めるため正規表現で行う）──
+
+def test_first_work_id_extracts_from_search_html() -> None:
+    from book_search_app.providers import _first_work_id
+
+    html = (
+        '<div><a class="x" href="/search/result/select?saleType=sell&amp;workId=41186860'
+        '&amp;itemType=book">銀河鉄道の夜</a></div>'
+    )
+    assert _first_work_id(html) == "41186860"
+
+
+def test_first_work_id_accepts_single_quoted_href() -> None:
+    from book_search_app.providers import _first_work_id
+
+    html = "<a href='/search/result/select?workId=123'>x</a>"
+    assert _first_work_id(html) == "123"
+
+
+def test_first_work_id_returns_none_when_absent() -> None:
+    from book_search_app.providers import _first_work_id
+
+    assert _first_work_id("<html><body>該当なし</body></html>") is None
+
+
+def test_text_falls_back_to_utf8_when_charset_is_not_declared() -> None:
+    """charset 宣言が無いと requests は ISO-8859-1 を既定にするため、
+    そのときだけ UTF-8 とみなすことを固定する。"""
+    import requests
+
+    from book_search_app.providers import _text
+
+    res = requests.Response()
+    res._content = "在庫あり".encode("utf-8")
+    res.encoding = "ISO-8859-1"
+    assert _text(res) == "在庫あり"
+
+
 # ── URLビルダー（リクエストは送らない）──────────────────────────
 
 @pytest.mark.parametrize(

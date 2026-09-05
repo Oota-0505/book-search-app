@@ -14,12 +14,49 @@ from pathlib import Path
 from PIL import Image
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "book_search_app" / "static" / "icons"
-BACKGROUND = (12, 8, 32)  # アプリの --ink と同じ #0C0820
+FALLBACK_BACKGROUND = (12, 8, 32)  # アプリの --ink と同じ #0C0820
 
 
-def _fit(source: Image.Image, size: int, scale: float, opaque: bool) -> Image.Image:
+def _background_of(image: Image.Image) -> tuple[int, int, int]:
+    """元画像の下地の色を、縁のピクセルの中央値から推定する。
+
+    自前の色で塗ると、元画像の背景とわずかに違ったときに
+    maskable 版で四角い継ぎ目が見えてしまう。生成画像の背景は
+    圧縮ノイズで数値がばらつくため、単純な四隅の一致判定ではなく
+    中央値を使う（外れ値に強い）。
+
+    縁に絵がはみ出しているなど、色がまとまらない場合は既定色にする。
+    """
+    rgb = image.convert("RGB")
+    w, h = rgb.size
+    step = max(1, min(w, h) // 32)
+
+    samples: list[tuple[int, int, int]] = []
+    for x in range(0, w, step):
+        samples.append(rgb.getpixel((x, 0)))
+        samples.append(rgb.getpixel((x, h - 1)))
+    for y in range(0, h, step):
+        samples.append(rgb.getpixel((0, y)))
+        samples.append(rgb.getpixel((w - 1, y)))
+
+    channels = [sorted(s[i] for s in samples) for i in range(3)]
+    median = tuple(c[len(c) // 2] for c in channels)
+
+    # 縁の色が散らばりすぎている＝一様な下地ではない、と判断する
+    spread = max(c[-1] - c[0] for c in channels)
+    if spread > 60:
+        print(f"⚠️ 縁の色が一様ではありません（ばらつき {spread}）。既定色を使います。")
+        return FALLBACK_BACKGROUND
+
+    return median  # type: ignore[return-value]
+
+
+def _fit(
+    source: Image.Image, size: int, scale: float, opaque: bool,
+    background: tuple[int, int, int],
+) -> Image.Image:
     """size×size の canvas の中央に、scale の割合で元画像を収める。"""
-    canvas = Image.new("RGBA", (size, size), (*BACKGROUND, 255) if opaque else (0, 0, 0, 0))
+    canvas = Image.new("RGBA", (size, size), (*background, 255) if opaque else (0, 0, 0, 0))
 
     inner = max(1, int(size * scale))
     art = source.copy()
@@ -45,6 +82,9 @@ def main() -> int:
     if source.width != source.height:
         print(f"⚠️ 正方形ではありません（{source.width}x{source.height}）。中央に収めます。")
 
+    background = _background_of(source)
+    print(f"下地の色: #{background[0]:02X}{background[1]:02X}{background[2]:02X}\n")
+
     ICONS_DIR.mkdir(parents=True, exist_ok=True)
 
     targets = [
@@ -58,7 +98,9 @@ def main() -> int:
     ]
 
     for name, size, scale, opaque in targets:
-        _fit(source, size, scale, opaque).save(ICONS_DIR / name, "PNG", optimize=True)
+        _fit(source, size, scale, opaque, background).save(
+            ICONS_DIR / name, "PNG", optimize=True
+        )
         print(f"{name:24s} {size}x{size}  {(ICONS_DIR / name).stat().st_size / 1024:6.1f} KB")
 
     print("\n次: .venv/bin/python -m pytest tests/test_pwa.py -q で四隅の不透明性を確認")
