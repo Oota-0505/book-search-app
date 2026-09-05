@@ -82,6 +82,11 @@ body::before {
     justify-content: center;
     gap: 16px;
     flex-wrap: wrap;
+    /* 見出しの下余白はここで取る。
+       h1 側に margin-bottom を付けると align-items:center が
+       「マージンを含めた箱」を中心に揃えるため、その半分だけ
+       アイコンと文字が縦にズレる。 */
+    margin-bottom: 1.2rem;
 }
 .hero-icon {
     flex-shrink: 0;
@@ -95,7 +100,7 @@ body::before {
     letter-spacing: -0.035em;
     color: #FFFFFF;
     line-height: 1.06;
-    margin: 0 0 1.2rem;
+    margin: 0;
     text-shadow: 0 4px 32px rgba(0, 0, 0, 0.7);
 }
 .hero-sub {
