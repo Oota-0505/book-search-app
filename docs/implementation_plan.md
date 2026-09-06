@@ -11,14 +11,14 @@
 
 | Phase | 内容 | 状態 |
 |---|---|---|
-| **A** | **Web Push をローカルで作る** | ⬜ **← 今ここ。あなたが手を動かす番** |
+| **A** | **Web Push をローカルで作る** | 🔄 **A-7まで完了。残りは A-8（実機確認）** |
 | B | 公開に耐える形にする（認証） | ⬜ 未着手 |
 | C-0 | hello world で Pyodide の起動CPUを実測 | ⬜ 未着手（`wrangler login` が要る） |
 | **C-1** | **CPU削減（BeautifulSoup撤去・文字コード固定）** | ✅ **完了** |
 | C-2 | `httpx` / `asyncio.gather` への書き換え | ⬜ 未着手 |
 | C-3 | Workers へデプロイ | ⬜ 未着手 |
 | D | スマホで再登録・再購読 | ⬜ 未着手 |
-| E | Gmail と繋ぐ | ⬜ 未着手 |
+| E | Gmail と繋ぐ | ⬜ 未着手（メール形式の調査は完了・設計済み） |
 
 ### C-1 の結果（済み・あなたは何もしなくてよい）
 
@@ -771,35 +771,183 @@ wrangler deploy
 
 # Phase E — Gmail と繋ぐ
 
-Google Apps Script（`script.google.com`）で新規プロジェクト：
+実際の通知メールの形式が判明したので、**件数だけでなく「どの本がどこに届いたか」**を
+通知に出せる。
+
+## E-0. 対象のメール
+
+| 図書館 | 差出人 | 本文の目印 |
+|---|---|---|
+| 岐阜市立図書館（メディコス） | `tosyo_chuo@gifu-lib.jp` | `ご予約をいただいた以下の資料がご用意できました。` |
+| 可児市立図書館（ミライブ） | `auto@mail.kani-lib.jp` | `予約された以下の資料の準備が整いました。` |
+
+**両方とも `書名：` の行を持つ**のが助かる点。加えて:
+
+- 岐阜市は `受取館：` があり、**どの分室に届いたか**が分かる（長森図書室など）
+- 可児市は `※YYYY/MM/DDまでに受取に来られない場合は、取り消されます。` で**期限**が分かる
+
+> 差出人は中央館のアドレスなので、分室から別アドレスで届く可能性がある。
+> ドメイン（`gifu-lib.jp` / `kani-lib.jp`）で拾い、本文の文言で絞るほうが安全。
+
+## E-1. Gmail の検索クエリ
+
+```
+from:(gifu-lib.jp OR kani-lib.jp)
+("ご用意できました" OR "準備が整いました")
+-label:bookfinder-notified
+newer_than:30d
+```
+
+**既読/未読で管理しない**こと。Gmailで自分が読んだだけで通知が止まってしまう。
+代わりに **`bookfinder-notified` ラベル**を付けて「通知済み」を記録する。
+ラベルなら Gmail 上で目視でき、付け外しでやり直しもできる。
+
+## E-2. Apps Script
+
+`script.google.com` で新規プロジェクトを作り、以下を貼る。
 
 ```javascript
-const NOTIFY_URL = "https://<Cloud RunのURL>/api/push/notify";
-const TOKEN = "<長いランダム文字列>";
+const NOTIFY_URL = "https://<デプロイ先>/api/push/notify";
+const TOKEN = "<長いランダム文字列>";        // サーバー側と同じ値
+const LABEL = "bookfinder-notified";
+
+const QUERY = 'from:(gifu-lib.jp OR kani-lib.jp) '
+  + '("ご用意できました" OR "準備が整いました") '
+  + `-label:${LABEL} newer_than:30d`;
 
 function checkLibraryMail() {
-  const query = 'is:unread newer_than:7d (from:gifu-lib.jp OR from:kani-lib.jp)';
-  const threads = GmailApp.search(query);
-  if (threads.length === 0) return;
+  const threads = GmailApp.search(QUERY, 0, 20);
+  if (threads.length === 0) return;          // ← ほぼ毎回ここで終わる
 
-  UrlFetchApp.fetch(NOTIFY_URL, {
+  const label = GmailApp.getUserLabelByName(LABEL)
+    || GmailApp.createLabel(LABEL);
+
+  const books = [];
+  for (const thread of threads) {
+    for (const message of thread.getMessages()) {
+      const parsed = parseMail(message.getPlainBody(), message.getFrom());
+      if (parsed) books.push(parsed);
+    }
+  }
+  if (books.length === 0) return;
+
+  const response = UrlFetchApp.fetch(NOTIFY_URL, {
     method: "post",
     contentType: "application/json",
-    payload: JSON.stringify({ count: threads.length }),
+    payload: JSON.stringify({ books }),
     headers: { Authorization: "Bearer " + TOKEN },
     muteHttpExceptions: true,
   });
+
+  // 送信に成功したときだけ「通知済み」にする（失敗したら次回また拾う）
+  if (response.getResponseCode() === 200) {
+    threads.forEach((thread) => thread.addLabel(label));
+  } else {
+    console.error("通知に失敗: " + response.getResponseCode() + " " + response.getContentText());
+  }
+}
+
+function parseMail(body, from) {
+  const title = (body.match(/書名：\s*(.+)/) || [])[1];
+  if (!title) return null;
+
+  const isKani = /kani-lib\.jp/.test(from);
+  return {
+    library: isKani ? "kani" : "gifu",
+    title: title.trim(),
+    // 岐阜市は受取館、可児市は受取期限が本文にある
+    branch: (body.match(/受取館：\s*(.+)/) || [])[1]?.trim() || null,
+    due: (body.match(/※(\d{4}\/\d{2}\/\d{2})までに/) || [])[1] || null,
+  };
 }
 ```
 
-- [ ] トリガーを「時間主導型 / 15分おき」で設定した
-- [ ] `/api/push/notify` を作った（`TOKEN` を検証して `push.send()` を呼ぶ）
-- [ ] 実際に図書館からメールが来たとき通知が出た
+**トリガー設定**: 左の時計アイコン → トリガーを追加 →
+`checkLibraryMail` / 時間主導型 / 分ベース / **15分おき**
 
-> 差出人アドレスは実際のメールを見て調整してください。
-> **該当メールが無ければ HTTP を叩かない**ので、GAS の無料枠（90分/日）に余裕で収まります。
+> 該当メールが無ければ `UrlFetchApp` を呼ばないので、
+> Apps Script の無料枠（トリガー合計90分/日）に余裕で収まる。
 
----
+## E-3. サーバー側に通知エンドポイントを足す
+
+```python
+# config.py
+NOTIFY_TOKEN: Final[str] = os.environ.get("BOOKFINDER_NOTIFY_TOKEN", "")
+```
+
+```python
+# main.py
+@app.post("/api/push/notify", include_in_schema=False)
+def push_notify(
+    payload: dict = Body(...),
+    authorization: str = Header(default=""),
+) -> JSONResponse:
+    """Apps Script から呼ばれ、予約本の到着を通知する。"""
+    expected = f"Bearer {NOTIFY_TOKEN}"
+    if not NOTIFY_TOKEN or not secrets.compare_digest(authorization, expected):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    books = payload.get("books") or []
+    if not books:
+        return JSONResponse({"error": "books が空です"}, status_code=400)
+
+    first = books[0]
+    where = first.get("branch") or ("カニミライブ" if first["library"] == "kani" else "メディコス")
+    body = f"{first['title']}（{where}）"
+    if len(books) > 1:
+        body += f" ほか{len(books) - 1}冊"
+
+    result = push.send(
+        title="📚 予約本が届きました",
+        body=body,
+        url=f"/?from=push&lib={first['library']}",
+        badge_count=len(books),
+    )
+    return JSONResponse(result)
+```
+
+> ⚠️ `secrets.compare_digest` を使うこと（`==` はタイミング攻撃に弱い）。
+> `Header` と `secrets` の import を忘れずに。
+
+## E-4. 通知タップ後の案内を図書館ごとに分ける
+
+iOS は通知タップで外部サイトへ飛べないので、`?lib=` を見て
+正しいマイページのリンクを出す（`app.js` の `from=push` の分岐を修正）。
+
+```javascript
+const params = new URLSearchParams(location.search);
+if (params.get("from") === "push") {
+    if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+
+    const isKani = params.get("lib") === "kani";
+    const box = el("div", "alert push-notice");
+    box.append("📚 予約本が届いています ");
+
+    const link = el("a", "", isKani ? "ミライブのマイページを開く ↗" : "メディコスのマイページを開く ↗");
+    link.href = isKani
+        ? "https://www.kani-lib.jp"
+        : "https://www1.gifu-lib.jp/winj/opac/login.do?lang=ja&dispatch=/opac/mylibrary.do&every=1";
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    box.appendChild(link);
+
+    resultsArea.prepend(box);
+}
+```
+
+## E-5. チェックリスト
+
+- [ ] `bookfinder-notified` ラベルを Gmail に作る（スクリプトが自動作成してもよい）
+- [ ] Apps Script を作り、15分トリガーを設定
+- [ ] `BOOKFINDER_NOTIFY_TOKEN` を決め、サーバーと Apps Script の両方に設定
+- [ ] `/api/push/notify` を実装
+- [ ] `app.js` の案内を図書館ごとに分岐
+- [ ] **過去のメールでテスト**: 該当メールのラベルを外す → 15分待つ（または
+      Apps Script のエディタで `checkLibraryMail` を手動実行）→ 通知が出るか
+- [ ] 実際に予約本が届いたときに通知が出た
+
+> **テストのコツ**: 実際に本が届くのを待つ必要はない。過去の通知メールから
+> `bookfinder-notified` ラベルを外せば、次の実行で拾われる。
 
 # 付録1. Laravel との対応表
 
