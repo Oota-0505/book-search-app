@@ -13,7 +13,7 @@
  *   上げ忘れると、端末に古いSWが残り続ける。
  */
 
-const VERSION = "v2";
+const VERSION = "v3";
 const STATIC_CACHE = `book-finder-static-${VERSION}`;
 const OFFLINE_URL = "/offline.html";
 
@@ -93,6 +93,15 @@ self.addEventListener("push", (event) => {
     event.waitUntil((async () => {
         // ⚠️ iOS では showNotification を必ず呼ぶこと。
         //    省略すると「サイレントpush」とみなされ、購読を解除される。
+        //
+        // iOS が見るのは title / body / data だけ。次はすべて無視される:
+        //   icon      … 常にアプリのアイコンが使われる
+        //   tag       … 同じ tag でも上書きされず、通知が増えていく
+        //   actions   … 通知にボタンを置けない（「受け取った」等は不可）
+        //   image     … 画像を出せない
+        //   renotify  … 既存の通知を更新できない
+        // icon/badge は Android では効くので残してある。
+        // 伝えたいことは必ず title と body に入れること。
         await self.registration.showNotification(data.title || "Book Finder", {
             body: data.body || "",
             icon: "/static/icons/icon-192.png",
