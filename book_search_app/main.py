@@ -80,15 +80,24 @@ async def login_form(request: Request, error: int = 0) -> object:
         return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse(
         request, "login.html",
-        {"app_name": APP_NAME, "theme_color": THEME_COLOR, "error": bool(error)},
+        {"app_name": APP_NAME, "theme_color": THEME_COLOR, "error": error},
     )
 
 
 @app.post("/login", include_in_schema=False)
-async def login(password: str = Form(...)) -> RedirectResponse:
+async def login(request: Request, password: str = Form(...)) -> RedirectResponse:
+    client = request.client.host if request.client else "unknown"
+
+    if auth.is_locked_out(client):
+        logger.warning("試行回数の上限に達しています: %s", client)
+        return RedirectResponse("/login?error=2", status_code=303)
+
     if not auth.check_password(password):
-        logger.warning("ログインに失敗しました")
+        auth.record_failure(client)
+        logger.warning("ログインに失敗しました: %s", client)
         return RedirectResponse("/login?error=1", status_code=303)
+
+    auth.clear_failures(client)
 
     response = RedirectResponse("/", status_code=303)
     response.set_cookie(

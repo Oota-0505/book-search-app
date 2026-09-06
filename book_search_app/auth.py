@@ -15,6 +15,7 @@ import hmac
 import logging
 import os
 import secrets
+import threading
 import time
 from typing import Awaitable, Callable
 
@@ -92,6 +93,38 @@ def is_valid(cookie: str | None) -> bool:
         return time.time() - int(issued_at) < MAX_AGE
     except ValueError:
         return False
+
+
+# ── 総当たり対策 ────────────────────────────────────────────────
+# 公開すると URL は証明書の透明性ログから見つかりうるので、
+# ログイン画面に無制限の試行をさせない。
+MAX_ATTEMPTS = 5
+LOCKOUT_SECONDS = 300
+
+_attempts: dict[str, list[float]] = {}
+_attempts_lock = threading.Lock()
+
+
+def _recent_failures(client: str) -> int:
+    now = time.time()
+    with _attempts_lock:
+        stamps = [t for t in _attempts.get(client, []) if now - t < LOCKOUT_SECONDS]
+        _attempts[client] = stamps
+        return len(stamps)
+
+
+def record_failure(client: str) -> None:
+    with _attempts_lock:
+        _attempts.setdefault(client, []).append(time.time())
+
+
+def clear_failures(client: str) -> None:
+    with _attempts_lock:
+        _attempts.pop(client, None)
+
+
+def is_locked_out(client: str) -> bool:
+    return _recent_failures(client) >= MAX_ATTEMPTS
 
 
 def check_password(given: str) -> bool:

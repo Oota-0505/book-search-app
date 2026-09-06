@@ -60,7 +60,8 @@
     <img src="/static/icons/icon-192.png" alt="">
     <h1>{{ app_name }}</h1>
     <p class="sub">岐阜の本を、ひとまとめに。</p>
-    {% if error %}<p class="error">⚠️ パスワードが違います</p>{% endif %}
+    {% if error == 1 %}<p class="error">⚠️ パスワードが違います</p>{% endif %}
+    {% if error == 2 %}<p class="error">⚠️ 試行回数が多すぎます。5分ほど待ってから再度お試しください</p>{% endif %}
     <input type="password" name="password" placeholder="パスワード"
            autocomplete="current-password" autofocus required>
     <button type="submit">ログイン</button>

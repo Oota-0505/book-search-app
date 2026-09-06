@@ -254,3 +254,18 @@ def test_a_forged_cookie_is_rejected() -> None:
     assert auth.is_valid(None) is False
     assert auth.is_valid("こわれている") is False
     assert auth.is_valid(auth.make_cookie_value()) is True
+
+
+def test_login_locks_out_after_repeated_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    """公開する以上、ログイン画面に無制限の試行をさせない。"""
+    monkeypatch.setenv("BOOKFINDER_PASSWORD", "himitsu")
+    auth._attempts.clear()
+
+    for _ in range(auth.MAX_ATTEMPTS):
+        client.post("/login", data={"password": "chigau"}, follow_redirects=False)
+
+    # 上限に達したら、正しいパスワードでも一旦断る
+    res = client.post("/login", data={"password": "himitsu"}, follow_redirects=False)
+    assert res.headers["location"] == "/login?error=2"
+
+    auth._attempts.clear()
