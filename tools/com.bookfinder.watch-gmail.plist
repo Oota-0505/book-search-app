@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  15分ごとに Gmail を見て、図書館の予約本メールを拾う。
+
+  設置:
+    cp tools/com.bookfinder.watch-gmail.plist ~/Library/LaunchAgents/
+    launchctl load  ~/Library/LaunchAgents/com.bookfinder.watch-gmail.plist
+  解除:
+    launchctl unload ~/Library/LaunchAgents/com.bookfinder.watch-gmail.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bookfinder.watch-gmail</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/monet/Documents/Book Research/.venv/bin/python</string>
+        <string>/Users/monet/Documents/Book Research/tools/watch_gmail.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/monet/Documents/Book Research</string>
+
+    <!-- 15分ごと -->
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <!-- Mac を起動した直後にも1回走らせる（寝ている間に届いた分を拾う） -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/monet/Documents/Book Research/logs/watch_gmail.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/monet/Documents/Book Research/logs/watch_gmail.log</string>
+</dict>
+</plist>

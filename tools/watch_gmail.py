@@ -28,7 +28,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -43,10 +43,18 @@ INTERVAL_SECONDS = 15 * 60
 # 取りこぼすので、こちらで持つ。
 SEEN_FILE = ROOT / "book_search_app" / "data" / "notified_mail_ids.json"
 
-# 図書館からの「用意できました」メールだけを拾う
-SEARCH_QUERY = (
-    '(OR (FROM "gifu-lib.jp") (FROM "kani-lib.jp"))'
-)
+# 図書館からの「用意できました」メールだけを拾う。
+# 受取期限は1週間ほどなので、直近だけ見れば十分（大きなメールボックスだと
+# 全期間の検索は遅い。52,000件のアカウントで数分かかった）
+DEFAULT_SINCE_DAYS = 30
+
+
+def _search_query(since_days: Optional[int]) -> str:
+    query = '(OR (FROM "gifu-lib.jp") (FROM "kani-lib.jp"))'
+    if since_days:
+        since = (datetime.now(timezone.utc) - timedelta(days=since_days)).strftime("%d-%b-%Y")
+        query = f'({query} SINCE {since})'
+    return query
 READY_PHRASES = ("ご用意できました", "準備が整いました")
 
 TITLE_RE = re.compile(r"書名：\s*(.+)")
@@ -59,6 +67,53 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("watch_gmail")
+
+
+def decode_mailbox(name: str) -> str:
+    """IMAP のフォルダ名（modified UTF-7）を読める文字列にする。
+
+    Gmail は日本語のラベルを "&VvNm+Jko-"（＝図書館）のように符号化して返す。
+    """
+    out, i = [], 0
+    while i < len(name):
+        if name[i] != "&":
+            out.append(name[i]); i += 1
+            continue
+        end = name.find("-", i)
+        if end == -1:
+            out.append(name[i:]); break
+        chunk = name[i + 1:end]
+        # "&-" は「&」そのもの。それ以外は modified UTF-7
+        out.append("&" if not chunk
+                   else ("+" + chunk.replace(",", "/") + "-").encode().decode("utf-7", "replace"))
+        i = end + 1
+    return "".join(out)
+
+
+def pick_mailbox(imap: imaplib.IMAP4_SSL, label: Optional[str]) -> str:
+    """見に行くフォルダを決める。
+
+    ラベルが指定されていればそれを使う。8件のラベルを見るほうが
+    5万件の「すべてのメール」を検索するより桁違いに速い。
+    無ければ \\All フラグの付いたフォルダ（すべてのメール）にする
+    （フォルダ名は表示言語で変わるので、名前ではなくフラグで探す）。
+    """
+    status, boxes = imap.list()
+    lines = [b.decode(errors="replace") for b in (boxes or [])] if status == "OK" else []
+
+    if label:
+        for line in lines:
+            raw = line.split(' "/" ')[-1].strip().strip('"')
+            if decode_mailbox(raw) == label:
+                logger.info("ラベル「%s」を見ます", label)
+                return f'"{raw}"'
+        logger.warning("ラベル「%s」が見つかりません。すべてのメールを見ます", label)
+
+    for line in lines:
+        if "\\All" in line:
+            return line.split(' "/" ')[-1]
+    logger.warning("「すべてのメール」が見つからないので INBOX を見ます")
+    return "INBOX"
 
 
 def _decode(value: Optional[str]) -> str:
@@ -122,7 +177,12 @@ def _save_seen(ids: List[str]) -> None:
         json.dump(ids[-500:], f, ensure_ascii=False, indent=2)
 
 
-def fetch_new_books(address: str, app_password: str) -> tuple[List[Dict[str, Any]], List[str]]:
+def fetch_new_books(
+    address: str,
+    app_password: str,
+    since_days: Optional[int] = DEFAULT_SINCE_DAYS,
+    label: Optional[str] = None,
+) -> tuple[List[Dict[str, Any]], List[str]]:
     """Gmail から未通知の予約本を拾う。(本のリスト, 対応するメールID) を返す。"""
     seen = set(_load_seen())
     books: List[Dict[str, Any]] = []
@@ -130,9 +190,10 @@ def fetch_new_books(address: str, app_password: str) -> tuple[List[Dict[str, Any
 
     with imaplib.IMAP4_SSL(IMAP_HOST) as imap:
         imap.login(address, app_password)
-        imap.select("INBOX", readonly=True)      # 既読状態を変えない
+        # readonly なので既読状態は変えない
+        imap.select(pick_mailbox(imap, label), readonly=True)
 
-        status, data = imap.search(None, SEARCH_QUERY)
+        status, data = imap.search(None, _search_query(since_days))
         if status != "OK":
             logger.warning("検索に失敗しました: %s", status)
             return [], []
@@ -140,8 +201,9 @@ def fetch_new_books(address: str, app_password: str) -> tuple[List[Dict[str, Any
         numbers = data[0].split()
         logger.info("図書館からのメール: %d件", len(numbers))
 
-        for number in numbers[-50:]:              # 直近50件だけ見る
-            status, raw = imap.fetch(number, "(RFC822)")
+        for number in numbers[-30:]:              # 直近30件だけ見る
+            # BODY.PEEK なら既読フラグを立てない（readonly だが念のため）
+            status, raw = imap.fetch(number, "(BODY.PEEK[])")
             if status != "OK" or not raw or not raw[0]:
                 continue
 
@@ -183,7 +245,11 @@ def notify(books: List[Dict[str, Any]], token: str) -> bool:
         return False
 
 
-def run_once(dry_run: bool = False) -> None:
+def run_once(
+    dry_run: bool = False,
+    since_days: Optional[int] = DEFAULT_SINCE_DAYS,
+    label: Optional[str] = None,
+) -> None:
     address = os.environ.get("GMAIL_ADDRESS", "")
     app_password = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
     if not address or not app_password:
@@ -192,7 +258,7 @@ def run_once(dry_run: bool = False) -> None:
 
     from book_search_app.config import notify_token
 
-    books, handled = fetch_new_books(address, app_password)
+    books, handled = fetch_new_books(address, app_password, since_days, label)
     if not books:
         logger.info("新しい予約本はありません")
         return
@@ -211,19 +277,25 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Gmail を見て予約本の到着を通知する")
     parser.add_argument("--loop", action="store_true", help="15分ごとに確認し続ける")
     parser.add_argument("--dry-run", action="store_true", help="通知せず、拾えるかだけ確認する")
+    parser.add_argument("--days", type=int, default=DEFAULT_SINCE_DAYS,
+                        help=f"何日前まで見るか（既定 {DEFAULT_SINCE_DAYS}日。0 で全期間）")
+    parser.add_argument("--label", default=os.environ.get("GMAIL_LABEL", ""),
+                        help="見に行くGmailのラベル名（例: 図書館）。速いので推奨")
     args = parser.parse_args()
+    since_days = args.days or None
+    label = args.label or None
 
     import run as runner
     runner.load_env()
 
     if not args.loop:
-        run_once(args.dry_run)
+        run_once(args.dry_run, since_days, label)
         return
 
     logger.info("%d分ごとに確認します（Ctrl+C で終了）", INTERVAL_SECONDS // 60)
     while True:
         try:
-            run_once(args.dry_run)
+            run_once(args.dry_run, since_days, label)
         except Exception:
             logger.exception("確認中にエラーが起きました。次回また試します")
         time.sleep(INTERVAL_SECONDS)
