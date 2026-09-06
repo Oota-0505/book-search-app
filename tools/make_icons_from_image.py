@@ -51,6 +51,36 @@ def _background_of(image: Image.Image) -> tuple[int, int, int]:
     return median  # type: ignore[return-value]
 
 
+def _crop_to_artwork(image: Image.Image, background: tuple[int, int, int]) -> Image.Image:
+    """下地だけの余白を切り落として、絵の部分だけにする。
+
+    生成された画像は絵のまわりに広い余白を持つことが多く、そのまま使うと
+    ホーム画面で絵が小さく見える。余白を削ってから拡大するほうが視認性が高い。
+    """
+    rgb = image.convert("RGB")
+    # 下地との差が小さいピクセルを「余白」とみなす（圧縮ノイズに耐えるため閾値つき）
+    diff = Image.new("L", rgb.size)
+    px_src, px_dst = rgb.load(), diff.load()
+    for y in range(rgb.height):
+        for x in range(rgb.width):
+            r, g, b = px_src[x, y]
+            d = abs(r - background[0]) + abs(g - background[1]) + abs(b - background[2])
+            px_dst[x, y] = 255 if d > 30 else 0
+
+    box = diff.getbbox()
+    if box is None:
+        return image
+
+    # 正方形に整えてから切り出す（縦横比を崩さないため）
+    left, top, right, bottom = box
+    cx, cy = (left + right) / 2, (top + bottom) / 2
+    half = max(right - left, bottom - top) / 2
+    side = half * 2
+    return image.crop((
+        int(cx - half), int(cy - half), int(cx - half + side), int(cy - half + side),
+    ))
+
+
 def _fit(
     source: Image.Image, size: int, scale: float, opaque: bool,
     background: tuple[int, int, int],
@@ -83,18 +113,24 @@ def main() -> int:
         print(f"⚠️ 正方形ではありません（{source.width}x{source.height}）。中央に収めます。")
 
     background = _background_of(source)
-    print(f"下地の色: #{background[0]:02X}{background[1]:02X}{background[2]:02X}\n")
+    print(f"下地の色: #{background[0]:02X}{background[1]:02X}{background[2]:02X}")
+
+    before = source.size
+    source = _crop_to_artwork(source, background)
+    print(f"余白を切り落とし: {before[0]}x{before[1]} → {source.size[0]}x{source.size[1]}\n")
 
     ICONS_DIR.mkdir(parents=True, exist_ok=True)
 
     targets = [
         # (ファイル名, サイズ, 図柄の占有率, 不透明にするか)
-        ("icon-192.png", 192, 1.00, True),
-        ("icon-512.png", 512, 1.00, True),
-        # Android は円や角丸に切り抜くので、中央60%程度に収めて余白を作る
-        ("maskable-192.png", 192, 0.60, True),
-        ("maskable-512.png", 512, 0.60, True),
-        ("apple-touch-icon.png", 180, 0.98, True),
+        # 余白を切り落としてあるので、ここでの割合がそのまま見た目の大きさになる
+        ("icon-192.png", 192, 0.92, True),
+        ("icon-512.png", 512, 0.92, True),
+        # Android は円や角丸に切り抜くので、中央70%に収めて余白を作る
+        ("maskable-192.png", 192, 0.70, True),
+        ("maskable-512.png", 512, 0.70, True),
+        # iOS は角を丸めるだけなので大きめでよい
+        ("apple-touch-icon.png", 180, 0.88, True),
     ]
 
     for name, size, scale, opaque in targets:

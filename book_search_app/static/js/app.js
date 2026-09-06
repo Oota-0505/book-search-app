@@ -259,11 +259,19 @@
         const subscription = await registration.pushManager.getSubscription();
         if (!subscription) return;
 
-        markPushEnabled();
-        // 端末には購読があるがサーバー側が失っている場合に備えて再送する
-        syncSubscription(subscription).catch((error) => {
-            console.info("購読の再同期に失敗:", error.message);
-        });
+        // 端末に購読があってもサーバーが失っていることがあるので必ず再送する。
+        // ここを握りつぶすと「オンと表示されているのに通知が来ない」状態になり、
+        // 原因が分からなくなる。失敗したら購読し直せるようにボタンを戻す。
+        try {
+            await syncSubscription(subscription);
+            markPushEnabled();
+        } catch (error) {
+            console.error("購読の再同期に失敗:", error);
+            renderMessage(
+                `⚠️ 通知の登録がサーバーに届いていません（${error.message}）。`
+                + "もう一度「🔔 通知をオンにする」を押してください。",
+            );
+        }
     }
 
     if ("Notification" in window && "PushManager" in window && "serviceWorker" in navigator) {

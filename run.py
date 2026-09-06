@@ -36,8 +36,9 @@ def main() -> None:
         host=args.host,
         port=args.port,
         reload=args.reload,
-        # アクセスログはアプリ側のロガーと二重になるので出さない
-        access_log=False,
+        # 開発中（--reload）はアクセスログを出す。
+        # スマホからリクエストが届いているかの切り分けに要る。
+        access_log=args.reload,
     )
 
 
