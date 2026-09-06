@@ -182,4 +182,116 @@
             });
         });
     }
+
+    // ── プッシュ通知 ────────────────────────────────────────────
+    const pushBtn = document.getElementById("push-btn");
+
+    /**
+     * base64url の公開鍵を Uint8Array に変換する。
+     * ⚠️ Safari は文字列のままの applicationServerKey を受け付けないので必須。
+     */
+    function urlBase64ToUint8Array(base64String) {
+        const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+        const raw = atob(base64);
+        return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+    }
+
+    function markPushEnabled() {
+        pushBtn.textContent = "🔔 通知はオンです";
+        pushBtn.disabled = true;
+    }
+
+    async function enablePush() {
+        pushBtn.disabled = true;
+        try {
+            // ⚠️ iOS では「クリックハンドラの中」でしか許可を求められない。
+            //    setTimeout やページ読み込み時に呼ぶと黙って無視される。
+            const permission = await Notification.requestPermission();
+            if (permission !== "granted") {
+                renderMessage(
+                    "⚠️ 通知が許可されませんでした。iPhoneの「設定 → 通知」から変更できます。",
+                );
+                pushBtn.disabled = false;
+                return;
+            }
+
+            const registration = await navigator.serviceWorker.ready;
+            const { key } = await (await fetch("/api/push/key")).json();
+
+            // すでに購読済みならそれを使い回す（重複登録を避ける）
+            const subscription =
+                (await registration.pushManager.getSubscription())
+                || (await registration.pushManager.subscribe({
+                    userVisibleOnly: true,          // iOS では true 必須
+                    applicationServerKey: urlBase64ToUint8Array(key),
+                }));
+
+            await syncSubscription(subscription);
+            markPushEnabled();
+        } catch (error) {
+            console.error("プッシュ購読に失敗:", error);
+            renderMessage(`⚠️ 通知の登録に失敗しました: ${error.message}`);
+            pushBtn.disabled = false;
+        }
+    }
+
+    /** 購読情報をサーバーへ送る（同じ endpoint は上書きされるので何度呼んでもよい）。 */
+    async function syncSubscription(subscription) {
+        const res = await fetch("/api/push/subscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(subscription),
+        });
+        if (!res.ok) throw new Error(`購読の保存に失敗しました (${res.status})`);
+    }
+
+    /**
+     * ボタンの表示を実態に合わせる。
+     *
+     * ⚠️ 「通知が許可されている」と「購読が登録されている」は別物。
+     *    Notification.permission だけで判断すると、許可済みなのに未購読という
+     *    状態（PWAを入れ直した直後など）でボタンが「オン」と嘘をつき、
+     *    購読し直す手段が無くなる。実際の購読の有無で判断する。
+     */
+    async function refreshPushButton() {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (!subscription) return;
+
+        markPushEnabled();
+        // 端末には購読があるがサーバー側が失っている場合に備えて再送する
+        syncSubscription(subscription).catch((error) => {
+            console.info("購読の再同期に失敗:", error.message);
+        });
+    }
+
+    if ("Notification" in window && "PushManager" in window && "serviceWorker" in navigator) {
+        pushBtn.hidden = false;
+        pushBtn.addEventListener("click", enablePush);
+        refreshPushButton().catch((error) => {
+            console.info("購読状態の確認に失敗:", error.message);
+        });
+    }
+    // ↑ 対応していない環境（Safariのタブなど）では hidden のまま。
+    //   iOS はホーム画面に追加したPWAでしか PushManager を持たない。
+
+    // ── プッシュから開かれたときの案内 ──────────────────────────
+    // ⚠️ iOS は通知タップで別オリジンへ飛べないため、
+    //    アプリ側でリンクを出して1タップで行けるようにする。
+    if (new URLSearchParams(location.search).get("from") === "push") {
+        if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+
+        const box = el("div", "alert push-notice");
+        box.append("📚 予約本が届いています ");
+
+        const link = el("a", "", "メディコスのマイページを開く ↗");
+        link.href = "https://www1.gifu-lib.jp/winj/opac/login.do"
+            + "?lang=ja&dispatch=/opac/mylibrary.do&every=1";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        box.appendChild(link);
+
+        resultsArea.prepend(box);
+    }
 })();

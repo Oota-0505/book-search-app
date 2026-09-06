@@ -13,7 +13,7 @@
  *   上げ忘れると、端末に古いSWが残り続ける。
  */
 
-const VERSION = "v1";
+const VERSION = "v2";
 const STATIC_CACHE = `book-finder-static-${VERSION}`;
 const OFFLINE_URL = "/offline.html";
 
@@ -82,4 +82,49 @@ self.addEventListener("fetch", (event) => {
             });
         }),
     );
+});
+
+
+/* ── プッシュ通知 ───────────────────────────────────────────── */
+
+self.addEventListener("push", (event) => {
+    const data = event.data ? event.data.json() : {};
+
+    event.waitUntil((async () => {
+        // ⚠️ iOS では showNotification を必ず呼ぶこと。
+        //    省略すると「サイレントpush」とみなされ、購読を解除される。
+        await self.registration.showNotification(data.title || "Book Finder", {
+            body: data.body || "",
+            icon: "/static/icons/icon-192.png",
+            badge: "/static/icons/icon-192.png",
+            data: { url: data.url || "/" },
+        });
+
+        // アイコンに数字を出す（iOS 16.4+ / ホーム画面追加済みのときだけ効く）
+        if (typeof data.count === "number" && self.navigator.setAppBadge) {
+            await self.navigator.setAppBadge(data.count);
+        }
+    })());
+});
+
+self.addEventListener("notificationclick", (event) => {
+    event.notification.close();
+    const url = (event.notification.data && event.notification.data.url) || "/";
+
+    event.waitUntil((async () => {
+        // ⚠️ iOS では clients.openWindow() で別オリジンへ飛べない。
+        //    必ず自分のオリジン内へ遷移させ、案内リンクは画面側に出すこと。
+        const windows = await self.clients.matchAll({
+            type: "window",
+            includeUncontrolled: true,
+        });
+
+        for (const client of windows) {
+            if (new URL(client.url).origin === self.location.origin) {
+                await client.navigate(url);
+                return client.focus();
+            }
+        }
+        return self.clients.openWindow(url);
+    })());
 });

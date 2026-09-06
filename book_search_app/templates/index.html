@@ -92,6 +92,11 @@
         <button type="submit" class="btn btn-primary" id="search-btn">📚 図書館・書店を検索</button>
         <button type="button" class="btn btn-amazon" id="amazon-btn">📦 Amazonで本を探す ↗</button>
       </div>
+
+      <!-- 通知に対応していないブラウザでは JS 側で hidden のままにする -->
+      <button type="button" class="btn btn-ghost" id="push-btn" hidden>
+        🔔 通知をオンにする
+      </button>
     </form>
   </section>
 

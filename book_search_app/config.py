@@ -66,3 +66,17 @@ def asset_version() -> str:
     for path in watched:
         digest.update(f"{path.name}:{path.stat().st_mtime_ns}".encode())
     return digest.hexdigest()[:10]
+
+
+
+
+# ── Web Push ───────────────────────────────────────────────────
+# A-2 で表示された公開鍵を貼る
+VAPID_PUBLIC_KEY: Final[str] = "BKETLN4gWm88gzdLc45lXhgvbVTGfsyBGfDf5PWYcx5EfHn7w3DpX13v1US7_-hk_bi5q2xWQVieQ9O2FimMqts"
+VAPID_PRIVATE_KEY_PATH: Final[Path] = DATA_DIR / "vapid_private.pem"
+
+# ⚠️ Apple は mailto: か HTTPS URL 以外だと 403 を返す（Laravel の VAPID_SUBJECT と同じ）
+VAPID_SUBJECT: Final[str] = "mailto:sin5531@gmail.com"
+
+# 購読情報の保存先
+SUBSCRIPTIONS_FILE: Final[Path] = DATA_DIR / "push_subscriptions.json"

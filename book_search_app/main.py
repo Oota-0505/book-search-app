@@ -31,6 +31,12 @@ from .config import (
     asset_version,
 )
 
+from fastapi import Body
+from . import push
+from .config import VAPID_PUBLIC_KEY
+
+
+
 # .webmanifest は環境によって未知の拡張子扱いになるため明示する
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
@@ -150,3 +156,29 @@ async def offline() -> FileResponse:
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon() -> FileResponse:
     return FileResponse(STATIC_DIR / "icons/icon-192.png", media_type="image/png")
+
+
+@app.get("/api/push/key", include_in_schema=False)
+async def push_key() -> JSONResponse:
+    """ブラウザが購読するときに使う公開鍵を返す。"""
+    return JSONResponse({"key": VAPID_PUBLIC_KEY})
+
+
+@app.post("/api/push/subscribe", include_in_schema=False)
+async def push_subscribe(subscription: dict = Body(...)) -> JSONResponse:
+    if not subscription.get("endpoint"):
+        return JSONResponse({"error": "購読情報が不正です"}, status_code=400)
+    push.add(subscription)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/push/test", include_in_schema=False)
+def push_test() -> JSONResponse:
+    """動作確認用。Phase E で Gmail 連携に置き換える。"""
+    result = push.send(
+        title="📚 予約本が届きました",
+        body="メディコスで1冊、受け取り待ちです",
+        url="/?from=push",
+        badge_count=1,
+    )
+    return JSONResponse(result)

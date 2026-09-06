@@ -248,6 +248,25 @@ body::before {
     filter: brightness(1.06);
 }
 
+/* 通知ボタン（主役ではないので控えめに） */
+.btn-ghost {
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    color: var(--text);
+    font-weight: 700;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+.btn-ghost:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.18);
+    transform: translateY(-1px);
+}
+.btn-ghost:disabled {
+    opacity: 0.55;
+    cursor: default;
+    transform: none;
+}
+
 .rule {
     border: none;
     border-top: 1px solid rgba(255, 255, 255, 0.10);
@@ -416,6 +435,15 @@ body::before {
     padding: 1rem;
     color: #FDE68A;
 }
+
+/* プッシュ通知から開かれたときの案内 */
+.push-notice a {
+    color: #FDE68A;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.push-notice a:hover { color: #FFFFFF; }
 
 /* ── レスポンシブ ───────────────────────────────────────────── */
 @media (max-width: 640px) {

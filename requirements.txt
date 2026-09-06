@@ -5,3 +5,7 @@ requests==2.32.3
 
 # アイコン生成（tools/make_icons.py）とテストで使用
 pillow==12.3.0
+
+# プッシュ通知
+pywebpush==2.0.3
+py-vapid==1.9.2
