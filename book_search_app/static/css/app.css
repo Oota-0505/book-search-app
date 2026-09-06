@@ -445,6 +445,32 @@ body::before {
 }
 .push-notice a:hover { color: #FFFFFF; }
 
+/* ── 通知の診断パネル ───────────────────────────────────────── */
+.diag {
+    margin-top: 2.5rem;
+    padding: 1rem 1.1rem;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 0.9rem;
+}
+.diag summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+.diag dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.35rem 0.9rem;
+    margin: 1rem 0;
+}
+.diag dt { color: var(--text-muted); white-space: nowrap; }
+.diag dd { margin: 0; word-break: break-all; }
+.diag .ng { color: #FCA5A5; font-weight: 700; }
+.diag .ok { color: #6EE7B7; }
+.diag-result { margin: 0.75rem 0 0; color: var(--text-muted); font-size: 0.85rem; }
+
 /* ── レスポンシブ ───────────────────────────────────────────── */
 @media (max-width: 640px) {
     .hero          { padding: 3.5rem 0.25rem 2.5rem; }

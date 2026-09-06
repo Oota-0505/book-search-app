@@ -59,6 +59,11 @@ def remove(endpoint: str) -> None:
         _save(subscriptions)
 
 
+def count() -> int:
+    """保存されている購読の件数（診断用）。"""
+    return len(_load())
+
+
 def send(title: str, body: str, url: str = "/", badge_count: int | None = None) -> Dict[str, int]:
     """登録済みの全端末へ通知を送る。
 

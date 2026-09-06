@@ -104,6 +104,16 @@
 
   <section id="results-area" aria-live="polite"></section>
 
+  <!-- 通知が来ないときの原因切り分け用。実機でしか分からない情報を画面に出す。 -->
+  <details class="diag" id="diag" hidden>
+    <summary>🔧 通知の診断</summary>
+    <dl id="diag-body"></dl>
+    <button type="button" class="btn btn-ghost" id="diag-test">
+      🔔 この端末にテスト通知を送る
+    </button>
+    <p class="diag-result" id="diag-result"></p>
+  </details>
+
 </main>
 
 <template id="tpl-loading">

@@ -172,6 +172,12 @@ async def push_subscribe(subscription: dict = Body(...)) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+@app.get("/api/push/status", include_in_schema=False)
+async def push_status() -> JSONResponse:
+    """診断用。サーバーに保存されている購読の件数を返す。"""
+    return JSONResponse({"count": push.count()})
+
+
 @app.post("/api/push/test", include_in_schema=False)
 def push_test() -> JSONResponse:
     """動作確認用。Phase E で Gmail 連携に置き換える。"""

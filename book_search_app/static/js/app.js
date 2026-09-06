@@ -284,6 +284,80 @@
     // ↑ 対応していない環境（Safariのタブなど）では hidden のまま。
     //   iOS はホーム画面に追加したPWAでしか PushManager を持たない。
 
+    // ── 通知の診断 ──────────────────────────────────────────────
+    // 実機でしか分からない状態（standalone か・許可・SWの版・購読の有無）を
+    // 画面に出す。通知が来ないときの原因切り分け用。
+    const diag = document.getElementById("diag");
+    const diagBody = document.getElementById("diag-body");
+    const diagResult = document.getElementById("diag-result");
+
+    function row(label, value, ok) {
+        const dt = el("dt", "", label);
+        const dd = el("dd", ok === undefined ? "" : (ok ? "ok" : "ng"), value);
+        diagBody.append(dt, dd);
+    }
+
+    async function renderDiagnostics() {
+        diagBody.replaceChildren();
+
+        const standalone = window.matchMedia("(display-mode: standalone)").matches
+            || window.navigator.standalone === true;
+        row("ホーム画面から起動", standalone ? "はい" : "いいえ（Safariのタブ）", standalone);
+
+        const hasPush = "PushManager" in window;
+        row("Push API", hasPush ? "使える" : "使えない", hasPush);
+
+        const permission = ("Notification" in window) ? Notification.permission : "なし";
+        row("通知の許可", permission, permission === "granted");
+
+        let registration = null;
+        try {
+            registration = await navigator.serviceWorker.getRegistration();
+        } catch (error) { /* 取得できないこともある */ }
+        row("Service Worker", registration?.active ? registration.active.state : "未登録",
+            Boolean(registration?.active));
+
+        let subscription = null;
+        if (registration) {
+            try {
+                subscription = await registration.pushManager.getSubscription();
+            } catch (error) { /* 未対応環境 */ }
+        }
+        row("この端末の購読", subscription ? subscription.endpoint.slice(0, 42) + "…" : "なし",
+            Boolean(subscription));
+
+        try {
+            const status = await (await fetch("/api/push/status")).json();
+            row("サーバーの登録数", `${status.count} 件`, status.count > 0);
+        } catch (error) {
+            row("サーバーの登録数", `取得できない（${error.message}）`, false);
+        }
+    }
+
+    document.getElementById("diag-test").addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        diagResult.textContent = "送信中…";
+        try {
+            const res = await fetch("/api/push/test", { method: "POST" });
+            const data = await res.json();
+            diagResult.textContent = data.sent > 0
+                ? `送信しました（${data.sent}件）。通知が出ない場合はiPhoneの「設定 → 通知」を確認してください。`
+                : "送信先がありません。「🔔 通知をオンにする」を押してください。";
+        } catch (error) {
+            diagResult.textContent = `送信に失敗: ${error.message}`;
+        } finally {
+            button.disabled = false;
+            renderDiagnostics();
+        }
+    });
+
+    if ("serviceWorker" in navigator) {
+        diag.hidden = false;
+        renderDiagnostics();
+        diag.addEventListener("toggle", () => { if (diag.open) renderDiagnostics(); });
+    }
+
     // ── プッシュから開かれたときの案内 ──────────────────────────
     // ⚠️ iOS は通知タップで別オリジンへ飛べないため、
     //    アプリ側でリンクを出して1タップで行けるようにする。
