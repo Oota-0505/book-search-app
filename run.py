@@ -16,11 +16,33 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 
 import uvicorn
 
+ENV_FILE = Path(__file__).resolve().parent / ".env"
+
+
+def load_env() -> None:
+    """.env を環境変数へ読み込む（Laravel の .env と同じ役割）。
+
+    すでに環境変数がある場合はそちらを優先する。
+    ライブラリを増やしたくないので、必要最小限の実装にしている。
+    """
+    if not ENV_FILE.exists():
+        return
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip("\"'")
+        os.environ.setdefault(key, value)
+
 
 def main() -> None:
+    load_env()
+
     parser = argparse.ArgumentParser(description="Book Finder を起動する")
     parser.add_argument("--host", default="127.0.0.1", help="待ち受けアドレス")
     parser.add_argument("--port", type=int, default=8000, help="待ち受けポート")
