@@ -15,6 +15,7 @@ Tailscale なら無料で HTTPS を用意できます:
 from __future__ import annotations
 
 import argparse
+import os
 
 import uvicorn
 
@@ -25,6 +26,10 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000, help="待ち受けポート")
     parser.add_argument("--reload", action="store_true", help="自動再起動（開発用）")
     args = parser.parse_args()
+
+    if args.reload:
+        # CSS/JS を編集したら再起動なしで反映させる（main.py が参照する）
+        os.environ["BOOKFINDER_DEV"] = "1"
 
     uvicorn.run(
         "book_search_app.main:app",

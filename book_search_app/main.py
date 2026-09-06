@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import os
 
 from fastapi import FastAPI, Query
 from fastapi.exceptions import RequestValidationError
@@ -36,8 +37,15 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 logging_config.setup()
 logger = logging.getLogger(__name__)
 
-# 起動時に1度だけ算出する（リクエストごとに stat しない）
+# 本番は起動時に1度だけ算出する（リクエストごとに stat しない）。
+# 開発中（run.py --reload）は毎回計算し、CSS/JS を編集したら
+# サーバーを再起動しなくても反映されるようにする。
+_DEV = os.environ.get("BOOKFINDER_DEV") == "1"
 ASSET_VERSION = asset_version()
+
+
+def _asset_version() -> str:
+    return asset_version() if _DEV else ASSET_VERSION
 
 app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -70,7 +78,7 @@ async def index(request: Request) -> object:
             "theme_color": THEME_COLOR,
             "history": history.load(),
             "history_limit": HISTORY_LIMIT,
-            "asset_version": ASSET_VERSION,
+            "asset_version": _asset_version(),
         },
     )
 
