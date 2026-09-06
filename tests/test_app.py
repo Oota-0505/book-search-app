@@ -7,7 +7,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from book_search_app import models, search
+from book_search_app import auth, models, search
 from book_search_app.main import app
 from book_search_app.providers import (
     build_amazon_url,
@@ -189,3 +189,68 @@ def test_url_builders_escape_the_keyword(builder, host: str) -> None:
     # 生の空白や & がクエリに混ざらないこと
     assert " " not in url
     assert "%26" in url or "&" in url.split("?", 1)[1]
+
+
+# ── ログイン（公開ホスティングに置くための保護）──────────────────
+
+def test_no_password_means_no_login(monkeypatch: pytest.MonkeyPatch) -> None:
+    """パスワード未設定なら手元の開発を邪魔しない。"""
+    monkeypatch.delenv("BOOKFINDER_PASSWORD", raising=False)
+    assert client.get("/").status_code == 200
+
+
+def test_login_protects_the_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BOOKFINDER_PASSWORD", "himitsu")
+    res = client.get("/", follow_redirects=False)
+    assert res.status_code == 303
+    assert res.headers["location"] == "/login"
+
+
+def test_api_returns_401_instead_of_redirecting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """APIは画面遷移させず、フロントが扱える形で返す。"""
+    monkeypatch.setenv("BOOKFINDER_PASSWORD", "himitsu")
+    res = client.get("/api/pending")
+    assert res.status_code == 401
+    assert "error" in res.json()
+
+
+@pytest.mark.parametrize("path", [
+    "/manifest.webmanifest", "/sw.js", "/offline.html",
+    "/favicon.ico", "/robots.txt", "/static/icons/icon-192.png",
+])
+def test_pwa_files_stay_public(monkeypatch: pytest.MonkeyPatch, path: str) -> None:
+    """⚠️ ここを認証で塞ぐと PWA としてインストールできなくなる。"""
+    monkeypatch.setenv("BOOKFINDER_PASSWORD", "himitsu")
+    assert client.get(path).status_code == 200
+
+
+def test_notify_stays_public_but_needs_its_own_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Apps Script は Cookie を持たないので、Bearer トークンで守る。"""
+    monkeypatch.setenv("BOOKFINDER_PASSWORD", "himitsu")
+    res = client.post("/api/notify", json={"books": [{"title": "x"}]})
+    # ログイン画面へのリダイレクトではなく、トークン不正の401であること
+    assert res.status_code == 401
+    assert res.json()["error"] == "unauthorized"
+
+
+def test_correct_password_lets_you_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BOOKFINDER_PASSWORD", "himitsu")
+    monkeypatch.setenv("BOOKFINDER_SECURE_COOKIE", "0")
+
+    bad = client.post("/login", data={"password": "chigau"}, follow_redirects=False)
+    assert bad.headers["location"] == "/login?error=1"
+
+    ok = client.post("/login", data={"password": "himitsu"}, follow_redirects=False)
+    assert ok.headers["location"] == "/"
+    assert auth.COOKIE_NAME in ok.cookies
+
+    client.cookies.set(auth.COOKIE_NAME, ok.cookies[auth.COOKIE_NAME])
+    assert client.get("/").status_code == 200
+    client.cookies.clear()
+
+
+def test_a_forged_cookie_is_rejected() -> None:
+    assert auth.is_valid("9999999999.deadbeef") is False
+    assert auth.is_valid(None) is False
+    assert auth.is_valid("こわれている") is False
+    assert auth.is_valid(auth.make_cookie_value()) is True

@@ -13,14 +13,14 @@ import os
 import secrets
 from datetime import date
 
-from fastapi import Body, FastAPI, Header, Query
+from fastapi import Body, FastAPI, Form, Header, Query
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from . import history, logging_config, pending, providers, push, search
+from . import auth, history, logging_config, pending, providers, push, search
 from .config import (
     APP_DESCRIPTION,
     APP_NAME,
@@ -56,6 +56,9 @@ app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+# 未ログインを弾く。PWA に必要なファイルと /api/notify は通す（auth.py 参照）
+app.middleware("http")(auth.require_login)
+
 
 @app.exception_handler(RequestValidationError)
 async def on_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -65,6 +68,52 @@ async def on_validation_error(request: Request, exc: RequestValidationError) -> 
         {"error": f"キーワードは{MAX_KEYWORD_LENGTH}文字以内で入力してください"},
         status_code=400,
     )
+
+
+# ============================================================================
+# ログイン
+# ============================================================================
+
+@app.get("/login", include_in_schema=False)
+async def login_form(request: Request, error: int = 0) -> object:
+    if not auth.password() or auth.is_valid(request.cookies.get(auth.COOKIE_NAME)):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(
+        request, "login.html",
+        {"app_name": APP_NAME, "theme_color": THEME_COLOR, "error": bool(error)},
+    )
+
+
+@app.post("/login", include_in_schema=False)
+async def login(password: str = Form(...)) -> RedirectResponse:
+    if not auth.check_password(password):
+        logger.warning("ログインに失敗しました")
+        return RedirectResponse("/login?error=1", status_code=303)
+
+    response = RedirectResponse("/", status_code=303)
+    response.set_cookie(
+        auth.COOKIE_NAME,
+        auth.make_cookie_value(),
+        max_age=auth.MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        # 手元の http://127.0.0.1 でも動くよう、HTTPS のときだけ secure にする
+        secure=bool(os.environ.get("BOOKFINDER_SECURE_COOKIE", "1") == "1"),
+    )
+    return response
+
+
+@app.get("/logout", include_in_schema=False)
+async def logout() -> RedirectResponse:
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(auth.COOKIE_NAME)
+    return response
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots() -> PlainTextResponse:
+    """個人用アプリなので検索エンジンには載せない。"""
+    return PlainTextResponse("User-agent: *\nDisallow: /\n")
 
 
 # ============================================================================
