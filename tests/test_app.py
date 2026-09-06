@@ -341,3 +341,78 @@ def test_the_same_book_is_not_registered_twice(monkeypatch: pytest.MonkeyPatch) 
     pending.add_many([entry])
     pending.add_many([entry])
     assert len(pending.load()) == 1
+
+
+# ── 図書館メールの解析（実際に届いたメールの文面で検証）──────────
+
+def _gifu_mail() -> str:
+    return """太田　三一斗　様
+
+岐阜市立図書館をご利用いただき、ありがとうございます。
+
+ご予約をいただいた以下の資料がご用意できました。
+利用カードをお持ちのうえ、受取館までお越しください。
+
+下記予約資料の取り置き期間は、連絡日の翌日から　７開館日　です。
+
+受取館　　　書名
+----------------------------------------
+
+受取館：長森図書室
+書名：ルノワールへの招待
+"""
+
+
+def _kani_mail() -> str:
+    return """利用券番号：0000000
+
+予約された以下の資料の準備が整いました。
+
+-----------------------------------------------------
+書名：  ナイン・ストーリーズ
+著者名：  J.D.サリンジャー／著
+出版者：  河出書房新社
+確保日：  2026/03/26
+
+  ※2026/04/05までに受取に来られない場合は、取り消されます。
+-----------------------------------------------------
+
+可児市立カニミライブ図書館  (tel:0574-61-3522)
+"""
+
+
+def test_parses_the_gifu_mail() -> None:
+    from datetime import datetime
+
+    from tools.watch_gmail import parse_mail
+
+    got = parse_mail(_gifu_mail(), "岐阜市立図書館 <tosyo_chuo@gifu-lib.jp>", datetime(2026, 4, 5))
+    assert got == {
+        "library": "gifu",
+        "title": "ルノワールへの招待",
+        "branch": "長森図書室",
+        "due": None,          # 岐阜市は本文に日付が無いのでサーバー側で計算する
+        "received": "2026-04-05",
+    }
+
+
+def test_parses_the_kani_mail() -> None:
+    from datetime import datetime
+
+    from tools.watch_gmail import parse_mail
+
+    got = parse_mail(_kani_mail(), "auto@mail.kani-lib.jp", datetime(2026, 3, 26))
+    assert got["library"] == "kani"
+    assert got["title"] == "ナイン・ストーリーズ"
+    assert got["due"] == "2026/04/05"
+    assert got["branch"] == "カニミライブ図書館"
+
+
+def test_ignores_other_library_mail() -> None:
+    """返却期限のお知らせなど、用意できた以外のメールは拾わない。"""
+    from datetime import datetime
+
+    from tools.watch_gmail import parse_mail
+
+    other = "返却期限が近づいています。\n書名：何かの本\n"
+    assert parse_mail(other, "tosyo_chuo@gifu-lib.jp", datetime(2026, 4, 5)) is None
