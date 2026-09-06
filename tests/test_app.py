@@ -68,11 +68,12 @@ def test_search_rejects_an_overlong_keyword() -> None:
     assert "error" in res.json()
 
 
-def test_search_uses_the_cache_and_does_not_refetch(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_search_uses_the_cache_and_does_not_refetch(monkeypatch: pytest.MonkeyPatch) -> None:
     """同じキーワードの再検索で各サイトへ再アクセスしないこと。"""
     calls: list[str] = []
 
-    def fake_check(keyword: str) -> tuple[models.BookStatus, str]:
+    async def fake_check(client, keyword: str) -> tuple[models.BookStatus, str]:
         calls.append(keyword)
         return models.AVAILABLE, "https://example.com/"
 
@@ -82,17 +83,18 @@ def test_search_uses_the_cache_and_does_not_refetch(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(search, "SITES", fake_sites)
     monkeypatch.setattr(search, "_cache", search.TTLCache(600))
 
-    first, cached_first = search.search("テスト書名")
-    second, cached_second = search.search("テスト書名")
+    first, cached_first = await search.search("テスト書名")
+    second, cached_second = await search.search("テスト書名")
 
     assert cached_first is False and cached_second is True
     assert len(calls) == len(fake_sites), "2回目でサイトへ再アクセスしている"
     assert [r.status for r in second] == [r.status for r in first]
 
 
-def test_all_error_results_are_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_all_error_results_are_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     """全滅した結果を10分間持ち続けると、復旧しても失敗が返り続けてしまう。"""
-    def failing(keyword: str) -> tuple[models.BookStatus, str]:
+    async def failing(client, keyword: str) -> tuple[models.BookStatus, str]:
         return models.ERROR, ""
 
     fake_sites = tuple(
@@ -101,16 +103,17 @@ def test_all_error_results_are_not_cached(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(search, "SITES", fake_sites)
     monkeypatch.setattr(search, "_cache", search.TTLCache(600))
 
-    search.search("通信断テスト")
-    _, cached = search.search("通信断テスト")
+    await search.search("通信断テスト")
+    _, cached = await search.search("通信断テスト")
     assert cached is False, "エラーの結果がキャッシュされている"
 
 
-def test_one_broken_site_does_not_break_the_others(monkeypatch: pytest.MonkeyPatch) -> None:
-    def exploding(keyword: str) -> tuple[models.BookStatus, str]:
+@pytest.mark.asyncio
+async def test_one_broken_site_does_not_break_the_others(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def exploding(client, keyword: str) -> tuple[models.BookStatus, str]:
         raise RuntimeError("想定外の例外")
 
-    def healthy(keyword: str) -> tuple[models.BookStatus, str]:
+    async def healthy(client, keyword: str) -> tuple[models.BookStatus, str]:
         return models.AVAILABLE, "https://example.com/ok"
 
     # 残りのサイトも差し替える（テストから外部サイトへ出さないため）
@@ -121,7 +124,7 @@ def test_one_broken_site_does_not_break_the_others(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(search, "SITES", fake_sites)
     monkeypatch.setattr(search, "_cache", search.TTLCache(600))
 
-    results, _ = search.search("例外テスト")
+    results, _ = await search.search("例外テスト")
     assert results[0].status == models.ERROR
     assert results[0].url == "https://example.com/", "例外時もリンクは生きていること"
     assert all(r.status == models.AVAILABLE for r in results[1:]), "他サイトが巻き込まれている"

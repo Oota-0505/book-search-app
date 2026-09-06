@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import logging
 import re
-import threading
 import urllib.parse
 from typing import Optional, Tuple
 
-import requests
+import httpx
 
 from . import models
 from .config import (
@@ -26,33 +25,27 @@ from .config import (
 
 logger = logging.getLogger(__name__)
 
-# requests.Session はスレッドセーフではないため、スレッドごとに1つ持つ。
-# コネクションを使い回すぶん、同一スレッドでの2回目以降が速くなる。
-_local = threading.local()
+def new_client() -> httpx.AsyncClient:
+    """このアプリ用の HTTP クライアント。
+
+    Cloudflare Workers には生の TCP が無く、通信は fetch 経由になるため
+    requests は動かない。httpx の非同期クライアントを使う。
+    """
+    return httpx.AsyncClient(headers=HEADERS, follow_redirects=True)
 
 
-def _session() -> requests.Session:
-    """このスレッド用の Session を返す（無ければ作る）。"""
-    session = getattr(_local, "session", None)
-    if session is None:
-        session = requests.Session()
-        session.headers.update(HEADERS)
-        _local.session = session
-    return session
-
-
-def _text(res: requests.Response) -> str:
+def _text(res: httpx.Response) -> str:
     """レスポンス本文を文字列にする。
 
-    対象3サイトはいずれも Content-Type ヘッダで charset=UTF-8 を宣言しており、
-    requests はそれを読んで正しくデコードする。統計的に文字コードを推定する
-    `apparent_encoding` は 1.77ms（実測）かかるうえ不要なので使わない。
-    Cloudflare Workers は CPU 10ms/リクエストが上限のため、この差が効く。
+    対象3サイトはいずれも Content-Type ヘッダで charset=UTF-8 を宣言している。
+    文字コードを統計的に推定する処理は CPU を食ううえ不要なので使わない
+    （Cloudflare Workers は CPU 10ms/リクエストが上限のため、この差が効く）。
 
-    charset の宣言が無い場合、requests は ISO-8859-1 を既定にしてしまうので、
+    charset の宣言が無い場合は ISO-8859-1 が既定になるので、
     そのときだけ UTF-8 とみなす。
     """
-    if not res.encoding or res.encoding.lower() in ("iso-8859-1", "latin-1"):
+    encoding = (res.encoding or "").lower()
+    if not encoding or encoding in ("iso-8859-1", "latin-1"):
         return res.content.decode("utf-8", errors="replace")
     return res.text
 
@@ -126,17 +119,15 @@ _GIFU_NO_HIT_PHRASES = (
 )
 
 
-def check_gifu(keyword: str) -> Tuple[models.BookStatus, str]:
+async def check_gifu(client: httpx.AsyncClient, keyword: str) -> Tuple[models.BookStatus, str]:
     """メディコスの在庫をチェックする。"""
     url = build_gifu_url(keyword)
     logger.info("メディコスを検索: '%s'", keyword)
     try:
-        session = _session()
-
         # 検索前にトップを1回叩いてセッションを確立する（この OPAC の仕様）
-        session.get("https://www1.gifu-lib.jp/winj/opac/top.do", timeout=TIMEOUT_SHORT)
+        await client.get("https://www1.gifu-lib.jp/winj/opac/top.do", timeout=TIMEOUT_SHORT)
 
-        res = session.get(
+        res = await client.get(
             "https://www1.gifu-lib.jp/winj/opac/search-standard.do",
             params={
                 "txt_word": keyword,
@@ -144,21 +135,20 @@ def check_gifu(keyword: str) -> Tuple[models.BookStatus, str]:
                 "submit_btn_searchEasy": "search",
             },
             timeout=TIMEOUT_SHORT,
-            allow_redirects=True,
         )
         text = _text(res)
 
-        if "g-mediacosmos.jp" in res.url or any(p in text for p in _GIFU_NO_HIT_PHRASES):
+        if "g-mediacosmos.jp" in str(res.url) or any(p in text for p in _GIFU_NO_HIT_PHRASES):
             logger.info("メディコス: 該当なし")
             return models.NONE_FOUND, url
 
         logger.info("メディコス: 在庫あり")
         return models.AVAILABLE, url
 
-    except requests.exceptions.Timeout:
+    except httpx.TimeoutException:
         logger.warning("メディコス: タイムアウト (keyword=%r)", keyword)
         return models.ERROR, url
-    except requests.exceptions.RequestException as exc:
+    except httpx.HTTPError as exc:
         logger.error("メディコス: リクエストエラー - %s", exc)
         return models.ERROR, url
 
@@ -167,7 +157,7 @@ def check_gifu(keyword: str) -> Tuple[models.BookStatus, str]:
 # ミライブ（可児市立図書館）
 # ============================================================================
 
-def check_kani(keyword: str) -> Tuple[models.BookStatus, str]:
+async def check_kani(client: httpx.AsyncClient, keyword: str) -> Tuple[models.BookStatus, str]:
     """ミライブは自動アクセスせず、検索結果ページへのリンクだけを返す。
 
     kani-lib.jp の robots.txt は検索パス `/csp` 配下を Disallow しており、
@@ -190,12 +180,12 @@ _SANSEIDO_TOTAL_RE = re.compile(r"<strong>\s*(\d+)\s*</strong>\s*件中")
 _SANSEIDO_STOCK_RE = re.compile(r"在庫：\s*([○×△▲])")
 
 
-def check_sanseido(keyword: str) -> Tuple[models.BookStatus, str]:
+async def check_sanseido(client: httpx.AsyncClient, keyword: str) -> Tuple[models.BookStatus, str]:
     """岐阜駅本屋の在庫をチェックする（書籍のみ。電子書籍は在庫に含めない）。"""
     url = build_sanseido_url(keyword)
     logger.info("岐阜駅本屋を検索: '%s'", keyword)
     try:
-        res = _session().get(
+        res = await client.get(
             "https://www.books-sanseido.jp/booksearch/BookSearchExec.action",
             params=_SANSEIDO_PARAMS | {"keyword": keyword},
             timeout=TIMEOUT_SHORT,
@@ -228,10 +218,10 @@ def check_sanseido(keyword: str) -> Tuple[models.BookStatus, str]:
         logger.warning("岐阜駅本屋: 判定できなかった (keyword=%r)", keyword)
         return models.PENDING, url
 
-    except requests.exceptions.Timeout:
+    except httpx.TimeoutException:
         logger.warning("岐阜駅本屋: タイムアウト (keyword=%r)", keyword)
         return models.ERROR, url
-    except requests.exceptions.RequestException as exc:
+    except httpx.HTTPError as exc:
         logger.error("岐阜駅本屋: リクエストエラー - %s", exc)
         return models.ERROR, url
 
@@ -257,40 +247,39 @@ def _first_work_id(html: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
-def _product_key(work_id: str) -> Optional[str]:
+async def _product_key(client: httpx.AsyncClient, work_id: str) -> Optional[str]:
     """select ページから productKey（ISBN/JAN）を抜き出す。"""
     try:
-        res = _session().get(
+        res = await client.get(
             "https://store-tsutaya.tsite.jp/search/result/select",
             params={"saleType": "sell", "workId": work_id, "itemType": "book"},
             timeout=TIMEOUT_MEDIUM,
-            allow_redirects=True,
         )
-    except requests.exceptions.RequestException as exc:
+    except httpx.HTTPError as exc:
         logger.error("productKey 取得エラー (work_id=%s): %s", work_id, exc)
         return None
 
     match = _PRODUCT_KEY_RE.search(_text(res))
     if match:
         return match.group(1)
-    match = _PRODUCT_KEY_IN_URL_RE.search(res.url)
+    match = _PRODUCT_KEY_IN_URL_RE.search(str(res.url))
     return match.group(1) if match else None
 
 
-def _tsutaya_urls(keyword: str) -> Tuple[str, str]:
+async def _tsutaya_urls(client: httpx.AsyncClient, keyword: str) -> Tuple[str, str]:
     """(検索URL, 在庫確認URL) を返す。特定できなければ両方とも検索URL。"""
     search_url = (
         "https://store-tsutaya.tsite.jp/search/result/"
         f"?keyword={urllib.parse.quote(keyword)}&itemType=book&limit=20"
     )
     try:
-        res = _session().get(search_url, timeout=TIMEOUT_MEDIUM)
+        res = await client.get(search_url, timeout=TIMEOUT_MEDIUM)
         work_id = _first_work_id(_text(res))
         if not work_id:
             logger.debug("各務原BC: workId が取得できなかった (keyword=%r)", keyword)
             return search_url, search_url
 
-        product_key = _product_key(work_id)
+        product_key = await _product_key(client, work_id)
         if not product_key:
             logger.debug("各務原BC: productKey が取得できなかった (work_id=%s)", work_id)
             return search_url, search_url
@@ -302,21 +291,21 @@ def _tsutaya_urls(keyword: str) -> Tuple[str, str]:
         )
         return search_url, stock_url
 
-    except requests.exceptions.RequestException as exc:
+    except httpx.HTTPError as exc:
         logger.error("各務原BC URL 生成エラー: %s", exc)
         return search_url, search_url
 
 
-def check_tsutaya(keyword: str) -> Tuple[models.BookStatus, str]:
+async def check_tsutaya(client: httpx.AsyncClient, keyword: str) -> Tuple[models.BookStatus, str]:
     """各務原BCの在庫をチェックする。"""
     logger.info("各務原BCを検索: '%s'", keyword)
-    search_url, stock_url = _tsutaya_urls(keyword)
+    search_url, stock_url = await _tsutaya_urls(client, keyword)
 
     if search_url == stock_url:
         return models.PENDING, stock_url
 
     try:
-        res = _session().get(stock_url, timeout=TIMEOUT_MEDIUM)
+        res = await client.get(stock_url, timeout=TIMEOUT_MEDIUM)
         text = _text(res)
 
         if "在庫あり" in text:
@@ -329,10 +318,10 @@ def check_tsutaya(keyword: str) -> Tuple[models.BookStatus, str]:
         logger.info("各務原BC: 判定保留")
         return models.PENDING, stock_url
 
-    except requests.exceptions.Timeout:
+    except httpx.TimeoutException:
         logger.warning("各務原BC: タイムアウト (keyword=%r)", keyword)
         return models.ERROR, search_url
-    except requests.exceptions.RequestException as exc:
+    except httpx.HTTPError as exc:
         logger.error("各務原BC: リクエストエラー - %s", exc)
         return models.ERROR, TSUTAYA_FALLBACK_URL
 

@@ -148,17 +148,16 @@ async def index(request: Request) -> object:
 # ============================================================================
 
 @app.get("/api/search", include_in_schema=False)
-def api_search(q: str = Query(default="", max_length=MAX_KEYWORD_LENGTH)) -> JSONResponse:
-    """4サイトを並列に検索して結果を返す。
+async def api_search(q: str = Query(default="", max_length=MAX_KEYWORD_LENGTH)) -> JSONResponse:
+    """4サイトを並行に検索して結果を返す。
 
-    同期関数として定義しているので、FastAPI がスレッドプールで実行する。
-    （外部サイトの応答待ちでイベントループを止めない）
+    通信待ちの間はイベントループを手放すので、非同期のまま扱える。
     """
     keyword = q.strip()
     if not keyword:
         return JSONResponse({"error": "キーワードを入力してください"}, status_code=400)
 
-    results, from_cache = search.search(keyword)
+    results, from_cache = await search.search(keyword)
     return JSONResponse(
         {
             "keyword": keyword,

@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+
+import httpx
 
 from . import models, providers
 from .config import CACHE_TTL_SECONDS
 
 logger = logging.getLogger(__name__)
 
-CheckFn = Callable[[str], Tuple[models.BookStatus, str]]
+CheckFn = Callable[[httpx.AsyncClient, str], Awaitable[Tuple[models.BookStatus, str]]]
 LinkFn = Callable[[str], str]
 
 
@@ -90,10 +92,12 @@ _cache = TTLCache(CACHE_TTL_SECONDS)
 # 並列検索
 # ============================================================================
 
-def _check_one(site: Site, keyword: str) -> models.SiteResult:
+async def _check_one(
+    client: httpx.AsyncClient, site: Site, keyword: str
+) -> models.SiteResult:
     """1サイトを検索する。想定外の例外もここで受け止め、他サイトを巻き込まない。"""
     try:
-        status, url = site.check(keyword)
+        status, url = await site.check(client, keyword)
     except Exception:
         logger.exception("%s: 予期しないエラー", site.key)
         status, url = models.ERROR, site.link(keyword)
@@ -108,8 +112,12 @@ def _check_one(site: Site, keyword: str) -> models.SiteResult:
     )
 
 
-def search(keyword: str) -> Tuple[List[models.SiteResult], bool]:
+async def search(keyword: str) -> Tuple[List[models.SiteResult], bool]:
     """全サイトを並列に検索する。
+
+    Cloudflare Workers にはスレッドが無いため、ThreadPoolExecutor ではなく
+    asyncio.gather で並行に走らせる。待ち時間の大半は通信待ちなので、
+    スレッドを使わなくても同時に問い合わせられる。
 
     Returns:
         (結果リスト, キャッシュから返したか)
@@ -122,8 +130,10 @@ def search(keyword: str) -> Tuple[List[models.SiteResult], bool]:
     logger.info("検索開始: keyword=%r", keyword)
     started = time.monotonic()
 
-    with ThreadPoolExecutor(max_workers=len(SITES)) as executor:
-        results = list(executor.map(lambda site: _check_one(site, keyword), SITES))
+    async with providers.new_client() as client:
+        results = list(await asyncio.gather(
+            *(_check_one(client, site, keyword) for site in SITES)
+        ))
 
     elapsed = time.monotonic() - started
     logger.info(
