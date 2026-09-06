@@ -91,6 +91,30 @@
     }
 
     // ── 検索履歴 ────────────────────────────────────────────────
+    // サーバーには持たない。Workers/Cloud Run はコンテナが消えるとファイルも
+    // 消えるうえ、検索キーワードは個人情報になりうるので端末内に留める。
+    const HISTORY_KEY = "bf_history";
+    const HISTORY_LIMIT = 5;
+
+    function loadHistory() {
+        try {
+            const raw = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+            return Array.isArray(raw) ? raw.map(String).slice(0, HISTORY_LIMIT) : [];
+        } catch (error) {
+            // プライベートブラウズや設定で localStorage が使えないことがある
+            return [];
+        }
+    }
+
+    function pushHistory(keyword) {
+        const history = [keyword, ...loadHistory().filter((k) => k !== keyword)]
+            .slice(0, HISTORY_LIMIT);
+        try {
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        } catch (error) { /* 保存できなくても検索は続けられる */ }
+        return history;
+    }
+
     function renderHistory(history) {
         clear(historyChips);
         history.forEach((keyword) => {
@@ -138,7 +162,7 @@
             }
 
             renderResults(data);
-            renderHistory(data.history || []);
+            renderHistory(pushHistory(keyword));
         } catch (error) {
             if (error.name === "AbortError") return;   // 新しい検索に置き換わっただけ
             renderMessage(
@@ -364,6 +388,7 @@
         }
     });
 
+    renderHistory(loadHistory());
     loadPending();
 
     // ── 通知の診断 ──────────────────────────────────────────────

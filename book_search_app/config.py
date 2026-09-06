@@ -17,8 +17,6 @@ TEMPLATES_DIR: Final[Path] = APP_DIR / "templates"
 DATA_DIR: Final[Path] = APP_DIR / "data"
 LOG_DIR: Final[Path] = APP_DIR.parent / "logs"
 
-HISTORY_FILE: Final[Path] = DATA_DIR / "search_history.json"
-
 # ── HTTP リクエスト設定 ─────────────────────────────────────────
 # アプリ識別子を付けて、アクセス元を各サイトから判別できるようにしている
 USER_AGENT: Final[str] = (
@@ -36,7 +34,6 @@ TIMEOUT_SHORT: Final[int] = 10
 TIMEOUT_MEDIUM: Final[int] = 20
 
 # ── アプリ設定 ──────────────────────────────────────────────────
-HISTORY_LIMIT: Final[int] = 5
 KUSA_BOOKS_KEYWORD: Final[str] = "各務原店"
 
 # 同一キーワードの再検索で各サイトへ再アクセスしない猶予時間（サーバー負荷軽減）
@@ -78,11 +75,7 @@ VAPID_PRIVATE_KEY_PATH: Final[Path] = DATA_DIR / "vapid_private.pem"
 # ⚠️ Apple は mailto: か HTTPS URL 以外だと 403 を返す（Laravel の VAPID_SUBJECT と同じ）
 VAPID_SUBJECT: Final[str] = "mailto:sin5531@gmail.com"
 
-# 購読情報の保存先
-SUBSCRIPTIONS_FILE: Final[Path] = DATA_DIR / "push_subscriptions.json"
-
 # ── 受取待ちリスト（Phase E）────────────────────────────────────
-PENDING_FILE: Final[Path] = DATA_DIR / "pending_books.json"
 _NOTIFY_TOKEN_FILE: Final[Path] = DATA_DIR / "notify_token.txt"
 
 

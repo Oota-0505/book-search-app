@@ -28,6 +28,8 @@ def test_index_returns_html() -> None:
     assert "Book Finder" in res.text
     # 検索結果は初期HTMLに含めない（外部サイトの応答を待たずに画面を出すため）
     assert "results-grid" not in res.text
+    # 検索履歴もサーバーからは出さない（端末の localStorage に持つ）
+    assert "history-chips" in res.text and "chip\">" not in res.text
 
 
 def test_manifest_content_type() -> None:
@@ -269,3 +271,70 @@ def test_login_locks_out_after_repeated_failures(monkeypatch: pytest.MonkeyPatch
     assert res.headers["location"] == "/login?error=2"
 
     auth._attempts.clear()
+
+
+# ── ストレージ抽象（Workers には FS が無いので差し替え可能にしてある）──
+
+def test_push_and_pending_use_the_swappable_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """保存先を差し替えても動くこと。Workers では KV に差し替える。"""
+    from book_search_app import pending, push, storage
+
+    memory = storage.MemoryStore()
+    monkeypatch.setattr(storage, "_store", memory)
+
+    push.add({"endpoint": "https://example.com/x", "keys": {}})
+    assert push.count() == 1
+    assert memory.get(push.STORE_KEY)[0]["endpoint"] == "https://example.com/x"
+
+    pending.add_many([{"library": "gifu", "title": "テスト本", "received": "2026-09-06"}])
+    assert len(pending.load()) == 1
+    assert memory.get(pending.STORE_KEY)[0]["title"] == "テスト本"
+
+
+def test_file_store_survives_a_crash_mid_write(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """別名で書いてから差し替えるので、既存ファイルが壊れない。"""
+    from book_search_app import storage
+
+    monkeypatch.setattr(storage, "DATA_DIR", tmp_path)
+    store = storage.FileStore()
+    store.set("things", [1, 2, 3])
+    assert store.get("things") == [1, 2, 3]
+    assert not list(tmp_path.glob("*.tmp")), "一時ファイルが残っている"
+
+
+# ── 受取期限の決め方 ────────────────────────────────────────────
+
+def test_kani_uses_the_date_written_in_the_mail() -> None:
+    from datetime import date
+
+    from book_search_app.pending import deadline_for
+
+    due, is_estimate = deadline_for("kani", date(2026, 3, 26), "2026/04/05")
+    assert due == "2026-04-05"
+    assert is_estimate is False
+
+
+def test_gifu_falls_back_to_the_earliest_possible_deadline() -> None:
+    """「連絡日の翌日から7開館日」は正確に計算できないので安全側に倒す。
+
+    休館日があれば実際の期限は後ろへずれるだけなので、
+    この日までに行けば必ず間に合う。
+    """
+    from datetime import date
+
+    from book_search_app.pending import deadline_for
+
+    due, is_estimate = deadline_for("gifu", date(2026, 4, 5), None)
+    assert due == "2026-04-12"
+    assert is_estimate is True
+
+
+def test_the_same_book_is_not_registered_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """同じメールを二度拾っても増やさない。"""
+    from book_search_app import pending, storage
+
+    monkeypatch.setattr(storage, "_store", storage.MemoryStore())
+    entry = {"library": "gifu", "title": "同じ本", "received": "2026-09-06"}
+    pending.add_many([entry])
+    pending.add_many([entry])
+    assert len(pending.load()) == 1

@@ -87,11 +87,10 @@
              placeholder="タイトル・著者名などを入力"
              aria-label="検索キーワード" maxlength="120" enterkeyhint="search">
 
-      <div class="history" id="history" {% if not history %}hidden{% endif %}>
+      <!-- 履歴は端末の localStorage に持つ。JSが描画する -->
+      <div class="history" id="history" hidden>
         <span class="history-label">🕒 検索履歴:</span>
-        <div class="history-chips" id="history-chips">
-          {% for kw in history %}<button type="button" class="chip">{{ kw }}</button>{% endfor %}
-        </div>
+        <div class="history-chips" id="history-chips"></div>
       </div>
 
       <div class="actions">

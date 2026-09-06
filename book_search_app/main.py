@@ -20,12 +20,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from . import auth, history, logging_config, pending, providers, push, search
+from . import auth, logging_config, pending, providers, push, search
 from .config import (
     APP_DESCRIPTION,
     APP_NAME,
     APP_SHORT_NAME,
-    HISTORY_LIMIT,
     MAX_KEYWORD_LENGTH,
     STATIC_DIR,
     TEMPLATES_DIR,
@@ -139,8 +138,6 @@ async def index(request: Request) -> object:
             "app_short_name": APP_SHORT_NAME,
             "description": APP_DESCRIPTION,
             "theme_color": THEME_COLOR,
-            "history": history.load(),
-            "history_limit": HISTORY_LIMIT,
             "asset_version": _asset_version(),
         },
     )
@@ -168,14 +165,8 @@ def api_search(q: str = Query(default="", max_length=MAX_KEYWORD_LENGTH)) -> JSO
             "cached": from_cache,
             "amazon_url": providers.build_amazon_url(keyword),
             "results": [r.to_dict() for r in results],
-            "history": history.add(keyword),
         }
     )
-
-
-@app.get("/api/history", include_in_schema=False)
-async def api_history_get() -> JSONResponse:
-    return JSONResponse({"history": history.load()})
 
 
 

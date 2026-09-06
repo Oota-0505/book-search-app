@@ -14,12 +14,11 @@ from typing import Any, Dict, List
 
 from pywebpush import WebPushException, webpush
 
-from .config import (
-    DATA_DIR,
-    SUBSCRIPTIONS_FILE,
-    VAPID_PRIVATE_KEY_PATH,
-    VAPID_SUBJECT,
-)
+from . import storage
+from .config import VAPID_PRIVATE_KEY_PATH, VAPID_SUBJECT
+
+# 保存先のキー（手元ではファイル名、Workers では KV のキーになる）
+STORE_KEY = "push_subscriptions"
 
 logger = logging.getLogger(__name__)
 
@@ -27,21 +26,12 @@ _lock = threading.Lock()
 
 
 def _load() -> List[Dict[str, Any]]:
-    try:
-        with SUBSCRIPTIONS_FILE.open(encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except FileNotFoundError:
-        return []
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("購読情報の読み込みに失敗: %s", exc)
-        return []
+    data = storage.get_store().get(STORE_KEY)
+    return data if isinstance(data, list) else []
 
 
 def _save(subscriptions: List[Dict[str, Any]]) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with SUBSCRIPTIONS_FILE.open("w", encoding="utf-8") as f:
-        json.dump(subscriptions, f, ensure_ascii=False, indent=2)
+    storage.get_store().set(STORE_KEY, subscriptions)
 
 
 def add(subscription: Dict[str, Any]) -> None:

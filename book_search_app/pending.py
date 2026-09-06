@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import uuid
@@ -15,7 +14,10 @@ from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
-from .config import DATA_DIR, PENDING_FILE
+from . import storage
+
+# 保存先のキー（手元ではファイル名、Workers では KV のキーになる）
+STORE_KEY = "pending_books"
 
 logger = logging.getLogger(__name__)
 
@@ -69,21 +71,12 @@ def deadline_for(library: str, received: date, stated_due: Optional[str]) -> tup
 
 
 def _load() -> List[Dict[str, Any]]:
-    try:
-        with PENDING_FILE.open(encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except FileNotFoundError:
-        return []
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("受取待ちリストの読み込みに失敗: %s", exc)
-        return []
+    data = storage.get_store().get(STORE_KEY)
+    return data if isinstance(data, list) else []
 
 
 def _save(books: List[Dict[str, Any]]) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with PENDING_FILE.open("w", encoding="utf-8") as f:
-        json.dump(books, f, ensure_ascii=False, indent=2)
+    storage.get_store().set(STORE_KEY, books)
 
 
 def _drop_expired(books: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
