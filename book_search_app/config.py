@@ -80,3 +80,30 @@ VAPID_SUBJECT: Final[str] = "mailto:sin5531@gmail.com"
 
 # 購読情報の保存先
 SUBSCRIPTIONS_FILE: Final[Path] = DATA_DIR / "push_subscriptions.json"
+
+# ── 受取待ちリスト（Phase E）────────────────────────────────────
+PENDING_FILE: Final[Path] = DATA_DIR / "pending_books.json"
+_NOTIFY_TOKEN_FILE: Final[Path] = DATA_DIR / "notify_token.txt"
+
+
+def notify_token() -> str:
+    """Apps Script からの通知を受け取るときの合言葉。
+
+    環境変数 BOOKFINDER_NOTIFY_TOKEN があればそれを使う（本番向け）。
+    無ければ data/ に生成して使い回す（手元ですぐ動かせるように）。
+    """
+    import os
+    import secrets
+
+    from_env = os.environ.get("BOOKFINDER_NOTIFY_TOKEN")
+    if from_env:
+        return from_env
+
+    if _NOTIFY_TOKEN_FILE.exists():
+        return _NOTIFY_TOKEN_FILE.read_text(encoding="utf-8").strip()
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    token = secrets.token_urlsafe(32)
+    _NOTIFY_TOKEN_FILE.write_text(token, encoding="utf-8")
+    _NOTIFY_TOKEN_FILE.chmod(0o600)
+    return token

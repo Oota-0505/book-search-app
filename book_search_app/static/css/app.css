@@ -146,6 +146,71 @@ body::before {
                 inset 0 1px 0 rgba(255,255,255,0.15);
 }
 
+/* ── 受取待ちの本 ───────────────────────────────────────────── */
+.pending { margin-bottom: 1.75rem; }
+.pending-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #FFFFFF;
+    margin: 0 0 0.7rem;
+}
+.pending-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+
+.pending-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0.85rem 1rem;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.07);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+/* 期限が近いものは目立たせる（過ぎると予約が取り消されるため） */
+.pending-item.soon {
+    border-color: rgba(251, 191, 36, 0.55);
+    background: rgba(251, 191, 36, 0.10);
+}
+.pending-item.over {
+    border-color: rgba(248, 113, 113, 0.55);
+    background: rgba(248, 113, 113, 0.10);
+}
+
+.pending-main { flex: 1 1 auto; min-width: 0; }
+.pending-book {
+    font-weight: 700;
+    color: #FFFFFF;
+    font-size: 1rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+.pending-meta {
+    margin-top: 3px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+.pending-due { font-weight: 700; }
+.pending-item.soon .pending-due { color: #FDE68A; }
+.pending-item.over .pending-due { color: #FCA5A5; }
+.pending-estimate { opacity: 0.75; }
+
+.pending-done {
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.10);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 0.45rem 0.9rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+.pending-done:hover { background: rgba(255, 255, 255, 0.2); }
+.pending-done:disabled { opacity: 0.5; cursor: progress; }
+
 /* ── 検索エリア ─────────────────────────────────────────────── */
 .section-title {
     color: #FFFFFF;

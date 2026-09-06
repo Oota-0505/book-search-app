@@ -284,6 +284,88 @@
     // ↑ 対応していない環境（Safariのタブなど）では hidden のまま。
     //   iOS はホーム画面に追加したPWAでしか PushManager を持たない。
 
+    // ── 受取待ちの本 ────────────────────────────────────────────
+    const pendingBox = document.getElementById("pending");
+    const pendingTitle = document.getElementById("pending-title");
+    const pendingList = document.getElementById("pending-list");
+
+    /** 2026-09-13 → 9/13 */
+    function formatDue(iso) {
+        const [, month, day] = iso.split("-");
+        return `${Number(month)}/${Number(day)}`;
+    }
+
+    function buildPendingItem(book) {
+        const item = el("li", "pending-item");
+        // 期限を過ぎると予約が取り消されるので、近いものほど目立たせる
+        if (book.days_left < 0) item.classList.add("over");
+        else if (book.days_left <= 3) item.classList.add("soon");
+
+        const main = el("div", "pending-main");
+        main.appendChild(el("div", "pending-book", book.title));
+
+        const meta = el("div", "pending-meta");
+        meta.append(`${book.where} ・ `);
+
+        const due = el("span", "pending-due");
+        if (book.days_left < 0) due.textContent = `${formatDue(book.due)}まで（期限切れ）`;
+        else if (book.days_left === 0) due.textContent = `${formatDue(book.due)}まで（今日まで）`;
+        else due.textContent = `${formatDue(book.due)}まで（あと${book.days_left}日）`;
+        meta.appendChild(due);
+
+        // 岐阜市は「7開館日」からの推定なので、根拠を添えて誤解を防ぐ
+        if (book.due_is_estimate) {
+            meta.appendChild(el("span", "pending-estimate", " ※最短。休館日があればもう少し余裕あり"));
+        }
+        main.appendChild(meta);
+        item.appendChild(main);
+
+        const done = el("button", "pending-done", "受け取った");
+        done.type = "button";
+        done.dataset.id = book.id;
+        item.appendChild(done);
+
+        return item;
+    }
+
+    function renderPending(books) {
+        pendingList.replaceChildren();
+        if (!books.length) {
+            pendingBox.hidden = true;
+            if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+            return;
+        }
+        pendingTitle.textContent = `📚 受取待ちの本（${books.length}冊）`;
+        books.forEach((book) => pendingList.appendChild(buildPendingItem(book)));
+        pendingBox.hidden = false;
+        if (navigator.setAppBadge) navigator.setAppBadge(books.length).catch(() => {});
+    }
+
+    async function loadPending() {
+        try {
+            const { books } = await (await fetch("/api/pending")).json();
+            renderPending(books || []);
+        } catch (error) {
+            console.info("受取待ちリストの取得に失敗:", error.message);
+        }
+    }
+
+    pendingList.addEventListener("click", async (event) => {
+        const button = event.target.closest(".pending-done");
+        if (!button) return;
+        button.disabled = true;
+        try {
+            const res = await fetch(`/api/pending/${button.dataset.id}`, { method: "DELETE" });
+            const { books } = await res.json();
+            renderPending(books || []);
+        } catch (error) {
+            button.disabled = false;
+            renderMessage(`⚠️ 受取済みにできませんでした: ${error.message}`);
+        }
+    });
+
+    loadPending();
+
     // ── 通知の診断 ──────────────────────────────────────────────
     // 実機でしか分からない状態（standalone か・許可・SWの版・購読の有無）を
     // 画面に出す。通知が来ないときの原因切り分け用。
@@ -362,8 +444,8 @@
     // ⚠️ iOS は通知タップで別オリジンへ飛べないため、
     //    アプリ側でリンクを出して1タップで行けるようにする。
     if (new URLSearchParams(location.search).get("from") === "push") {
-        if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
-
+        // バッジは loadPending() が受取待ちの冊数に合わせて調整するので、
+        // ここでは消さない（まだ取りに行っていない本が残っているため）
         const box = el("div", "alert push-notice");
         box.append("📚 予約本が届いています ");
 

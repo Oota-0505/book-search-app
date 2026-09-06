@@ -10,15 +10,17 @@ from __future__ import annotations
 import logging
 import mimetypes
 import os
+import secrets
+from datetime import date
 
-from fastapi import FastAPI, Query
+from fastapi import Body, FastAPI, Header, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from . import history, logging_config, providers, search
+from . import history, logging_config, pending, providers, push, search
 from .config import (
     APP_DESCRIPTION,
     APP_NAME,
@@ -28,13 +30,10 @@ from .config import (
     STATIC_DIR,
     TEMPLATES_DIR,
     THEME_COLOR,
+    VAPID_PUBLIC_KEY,
     asset_version,
+    notify_token,
 )
-
-from fastapi import Body
-from . import push
-from .config import VAPID_PUBLIC_KEY
-
 
 
 # .webmanifest は環境によって未知の拡張子扱いになるため明示する
@@ -188,3 +187,72 @@ def push_test() -> JSONResponse:
         badge_count=1,
     )
     return JSONResponse(result)
+
+
+# ============================================================================
+# 受取待ちリスト（図書館からの予約本お取り置きメール）
+# ============================================================================
+
+@app.get("/api/pending", include_in_schema=False)
+async def api_pending() -> JSONResponse:
+    """受取待ちの本を、期限の近い順に返す。"""
+    return JSONResponse({"books": pending.load()})
+
+
+@app.delete("/api/pending/{book_id}", include_in_schema=False)
+async def api_pending_delete(book_id: str) -> JSONResponse:
+    """「受け取った」で1冊消す。"""
+    if not pending.remove(book_id):
+        return JSONResponse({"error": "見つかりません"}, status_code=404)
+    return JSONResponse({"books": pending.load()})
+
+
+@app.post("/api/notify", include_in_schema=False)
+def api_notify(
+    payload: dict = Body(...),
+    authorization: str = Header(default=""),
+) -> JSONResponse:
+    """Apps Script から呼ばれ、予約本の到着を登録して通知する。
+
+    同期関数にしているのは、プッシュ送信が通信待ちでブロックするため
+    （FastAPI がスレッドプールで実行してくれる）。
+    """
+    expected = f"Bearer {notify_token()}"
+    if not secrets.compare_digest(authorization, expected):
+        logger.warning("/api/notify に不正なトークンでアクセスがありました")
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    entries = payload.get("books") or []
+    if not entries:
+        return JSONResponse({"error": "books が空です"}, status_code=400)
+
+    before = {b["id"] for b in pending.load()}
+    books = pending.add_many(entries)
+    added = [b for b in pending.load() if b["id"] not in before]
+
+    if not added:
+        # 同じメールを二度拾っただけ。通知は送らない
+        logger.info("新規の予約本はありませんでした")
+        return JSONResponse({"added": 0, "sent": 0, "total": len(books)})
+
+    first = added[0]
+    body = f"{first['title']}（{first['where']}）・{_format_due(first['due'])}まで"
+    if len(added) > 1:
+        body += f" ほか{len(added) - 1}冊"
+
+    result = push.send(
+        title="📚 予約本が届きました",
+        body=body,
+        url=f"/?from=push&lib={first['library']}",
+        badge_count=len(pending.load()),
+    )
+    return JSONResponse({"added": len(added), "total": len(books), **result})
+
+
+def _format_due(iso_date: str) -> str:
+    """2026-09-13 → 9/13"""
+    try:
+        d = date.fromisoformat(iso_date)
+        return f"{d.month}/{d.day}"
+    except ValueError:
+        return iso_date
