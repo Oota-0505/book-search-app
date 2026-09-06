@@ -1,5 +1,10 @@
 # Cloudflare Workers 移行設計（改訂版）
 
+> **⚠️ 2026-09-06 追記: 実測の結果、Cloudflare Workers 無料プランは採用できないと判断しました。**
+> 本書 §5 の手順0（hello world で CPU を実測し、超過するなら諦める）を実行した結果です。
+> 詳細は §7「実測の結果」を参照。
+> httpx / asyncio 化とストレージ抽象化はどの移行先でも必要なので、そのまま活かします。
+
 - 作成: 2026-09-05
 - 決定: デプロイ先を **Cloudflare Workers（Python）** とする
 - 状態: **設計のみ。実装は未着手**
@@ -219,3 +224,70 @@ wrangler tail   # ← ここでCPU時間を観測する
 - [Python packages supported in Cloudflare Workers](https://developers.cloudflare.com/workers/languages/python/packages/)
 - [Python Workers redux: fast cold starts, packages, and a uv-first workflow | Cloudflare Blog](https://blog.cloudflare.com/python-workers-advancements/)
 - [Cloudflare Workers Free Tier 2026: Limits, Pricing & What Changed](https://agentdeals.dev/vendor/cloudflare-workers)
+
+---
+
+## 7. 実測の結果（2026-09-06）— Workers 不採用
+
+手順0のとおり、最小の Python Worker をデプロイして `wrangler tail` で
+CPU 時間を実測した。
+
+### 計測1: ほぼ何もしない Worker
+
+50KB の文字列に正規表現を1回かけるだけの Worker。
+
+| 回 | CPU | 結果 |
+|---|---|---|
+| 1 | 8ms | ok |
+| 2 | 6ms | ok |
+| 3 | **11ms** | ok |
+| 4 | 6ms | ok |
+| 5 | **16ms** | ok |
+| 6 | 9ms | ok |
+
+平均 **9.3ms**。正規表現そのものは 0.0ms（計測不能なほど速い）だったので、
+**ほぼ全部が Pyodide の起動オーバーヘッド**。
+デプロイ時にも `Worker Startup Time: 409 ms` と表示されていた。
+
+### 計測2: 実際の上限
+
+`?burn=N` で N ミリ秒ぶん計算する Worker を置いて確かめたところ、
+**`burn=5`（5ms）でも打ち切られた**。
+
+```
+outcome: exceededCpu
+例外: Error: Worker exceeded CPU time limit.
+CPU: 20ms
+```
+
+### 結論
+
+**Pyodide の起動だけで CPU 予算をほぼ使い切る。**
+この上に FastAPI・Jinja2・httpx・アプリのロジックを載せる余地は無い。
+
+C-1 で BeautifulSoup を外して解析を 13.13ms → 0.05ms にしたが、
+**削るべきはアプリのコードではなくランタイムのオーバーヘッドだった**ため、
+その努力では埋まらない。
+
+### 無駄にならなかったもの
+
+| 作業 | 他の移行先でも必要か |
+|---|---|
+| BeautifulSoup 撤去（C-1） | ✅ 速くなるのは変わらない |
+| httpx / asyncio 化（C-2） | ✅ 非同期のほうが素直 |
+| ストレージ抽象化 | ✅ **どこへ行ってもコンテナは消える**ので必須 |
+| 検索履歴を localStorage へ | ✅ サーバーに状態を持たないほうが良い |
+| 認証・robots.txt | ✅ 公開するなら必須 |
+
+Workers 固有だったのは「KVStore を書いた」ことだけで、
+これも `storage.py` の実装が1つ増えただけ。
+
+### 次の候補
+
+| 選択肢 | 費用 | カード | 起動 | 備考 |
+|---|---|---|---|---|
+| Workers 有料 | **$5/月** | 必要 | 速い | CPU 30秒。金を払えば解決する |
+| Cloud Run | 無料枠 | **必要** | 数秒 | コードはほぼそのまま載る |
+| Koyeb | 無料 | 原則不要 | コールドスタートあり | 1時間で停止 |
+| Render | 無料 | 不要 | **30〜60秒** | アプリ本体には不向き |
+| Tailscale funnel | 無料 | 不要 | 即時 | **Mac が起動している必要がある** |
